@@ -1,0 +1,8 @@
+{
+  "name": "PokeVault MVP",
+  "description": "A minimal viable marketplace for Pokemon card collectibles, featuring AI-assisted listing creation and real-time bidding simulation.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
