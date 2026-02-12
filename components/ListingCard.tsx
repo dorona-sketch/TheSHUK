@@ -147,17 +147,29 @@ export const ListingCard = React.memo<ListingCardProps>(({
           const windowWidth = window.innerWidth;
           const windowHeight = window.innerHeight;
           
+          const PREVIEW_WIDTH = 340; // 320px (w-80) + 20px buffer
+          const ESTIMATED_HEIGHT = 420; // Approximate height of the preview popover
+
+          // Horizontal Logic
           const spaceRight = windowWidth - rect.right;
-          if (spaceRight < 340) {
+          const spaceLeft = rect.left;
+          
+          // Prefer right side, unless it overflows window
+          if (spaceRight < PREVIEW_WIDTH) {
+              // If right overflows, try left
               setPreviewSide('left');
           } else {
               setPreviewSide('right');
           }
 
-          const PREVIEW_HEIGHT = 450;
-          const spaceBelow = windowHeight - rect.top;
+          // Vertical Logic
+          // Space below the top of the card
+          const spaceBelowTop = windowHeight - rect.top;
           
-          if (spaceBelow < PREVIEW_HEIGHT && rect.bottom > PREVIEW_HEIGHT) {
+          // If not enough space below the element's top to fit the preview, 
+          // align to the bottom of the element so it grows upwards.
+          // Note: Tailwind 'bottom-0' aligns bottom of preview with bottom of parent.
+          if (spaceBelowTop < ESTIMATED_HEIGHT) {
               setPreviewAlign('bottom');
           } else {
               setPreviewAlign('top');
