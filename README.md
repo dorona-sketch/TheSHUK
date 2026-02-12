@@ -15,6 +15,13 @@ View your app in AI Studio: https://ai.studio/apps/drive/1ZltNrahY6OjPFCTlYpy_m4
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Create `.env.local` (or copy from `.env.example`) and set required environment variables:
+   - `VITE_API_KEY` (required): shared API key used by app services (Gemini + Pokemon TCG API)
 3. Run the app:
    `npm run dev`
+
+## Environment Variables
+
+- `VITE_API_KEY` (**required**) - canonical API key environment variable read by `getEnv('API_KEY')`.
+  - This value powers Pokemon TCG API requests.
+  - If missing, TCG data calls intentionally degrade and log a user-facing setup message instead of using embedded credentials.
