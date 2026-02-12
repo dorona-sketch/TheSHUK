@@ -244,22 +244,32 @@ export const searchCardByCollectorNumber = async (number: string, total?: string
         
         // Post-Processing: Filtering & Sorting
         if (candidates.length > 0) {
-            // 1. Prioritize exact number match
-            // API fuzzy match might return number:"11" when searching "1"
-            const exactMatches = candidates.filter((c: any) => 
-                c.number.toLowerCase() === rawNum.toLowerCase() || 
-                c.number.toLowerCase() === cleanNum.toLowerCase() ||
-                c.number.toLowerCase() === `${setPrefix || ''}${cleanNum}`.toLowerCase()
-            );
-            
-            if (exactMatches.length > 0) {
-                // 2. If we have exact matches and a total was provided, prioritize matching total
-                if (total) {
-                    const totalMatches = exactMatches.filter((c: any) => c.set.printedTotal.toString() === total);
-                    if (totalMatches.length > 0) return totalMatches;
+            const targetNumber = String(number ?? '').toLowerCase();
+
+            // 1. Exact Number Match Preference (case insensitive)
+            const exactMatches = candidates.filter((c: any) => {
+                try {
+                    return String(c?.number ?? '').toLowerCase() === targetNumber;
+                } catch {
+                    return false;
                 }
-                return exactMatches; 
+            });
+
+            // 2. If we have exact matches and a total was provided, prioritize the one matching total
+            if (exactMatches.length > 0 && total) {
+                const targetTotal = String(total ?? '');
+                const totalMatches = exactMatches.filter((c: any) => {
+                    try {
+                        return String(c?.set?.printedTotal ?? '') === targetTotal;
+                    } catch {
+                        return false;
+                    }
+                });
+                if (totalMatches.length > 0) return totalMatches;
+                return exactMatches; // Return exact number matches even if total mismatches
             }
+
+            if (exactMatches.length > 0) return exactMatches;
         }
         
         return candidates;
