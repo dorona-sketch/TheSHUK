@@ -207,16 +207,31 @@ export const searchCardByCollectorNumber = async (number: string, total?: string
         
         // Post-Processing: Filtering & Sorting
         if (candidates.length > 0) {
+            const targetNumber = String(number ?? '').toLowerCase();
+
             // 1. Exact Number Match Preference (case insensitive)
-            const exactMatches = candidates.filter((c: any) => c.number.toLowerCase() === number.toLowerCase());
-            
+            const exactMatches = candidates.filter((c: any) => {
+                try {
+                    return String(c?.number ?? '').toLowerCase() === targetNumber;
+                } catch {
+                    return false;
+                }
+            });
+
             // 2. If we have exact matches and a total was provided, prioritize the one matching total
             if (exactMatches.length > 0 && total) {
-                const totalMatches = exactMatches.filter((c: any) => c.set.printedTotal.toString() === total);
+                const targetTotal = String(total ?? '');
+                const totalMatches = exactMatches.filter((c: any) => {
+                    try {
+                        return String(c?.set?.printedTotal ?? '') === targetTotal;
+                    } catch {
+                        return false;
+                    }
+                });
                 if (totalMatches.length > 0) return totalMatches;
                 return exactMatches; // Return exact number matches even if total mismatches
             }
-            
+
             if (exactMatches.length > 0) return exactMatches;
         }
         
