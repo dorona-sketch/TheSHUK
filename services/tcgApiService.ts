@@ -84,7 +84,7 @@ export const fetchSetChaseCard = async (setId: string) => {
 
     try {
         // Query to get the highest market price across common high-value types
-        // Note: The API sort logic is specific. We try to find the absolute max.
+        // API Sort priority: Holofoil > 1st Ed > Normal
         const response = await fetch(
             `${API_BASE_URL}/cards?q=set.id:${setId}&orderBy=-tcgplayer.prices.holofoil.market,-tcgplayer.prices.1stEditionHolofoil.market,-tcgplayer.prices.normal.market&pageSize=1`, 
             { headers }
@@ -175,14 +175,17 @@ export const resolvePromoSet = async (prefix: string): Promise<string | null> =>
         'bw': 'bwp', // Black & White Promo
         'hgss': 'hsp', // HGSS Promo
         'pop': 'pop', // POP Series
-        // Common misreads or alternative codes
-        'tg': 'tg', // Trainer Gallery (usually subsets, handled by ID logic)
-        'gg': 'gg', // Galarian Gallery
-        'sv': 'sv'  // Shiny Vault
+        'vp': 'svp', // Common shorthand for Violet/Scarlet Promos
+        'sv': 'sv' // Shiny Vault
     };
     
-    // Direct match or partial match
+    // Direct match
     if (mappings[p]) return mappings[p];
+    
+    // Partial match for known prefixes
+    if (p.startsWith('swsh')) return 'swshp';
+    if (p.startsWith('xy')) return 'xyp';
+    if (p.startsWith('sm')) return 'smp';
     
     // Try to find if it matches known set codes directly (e.g. 'evs', 'base1')
     return p.length >= 3 ? p : null;
@@ -190,58 +193,98 @@ export const resolvePromoSet = async (prefix: string): Promise<string | null> =>
 
 /**
  * Enhanced search to handle TG, SV, and Promo formats correctly.
- * Now includes fallback logic if 'total' mismatch causes empty results.
+ * Supports flexible partial matching for "Number/Total" and subsets.
  */
 export const searchCardByCollectorNumber = async (number: string, total?: string, setPrefix?: string): Promise<any[]> => {
     const headers = getHeaders();
     if (!headers) return [];
 
     try {
-        let q = `number:"${number}"`;
-        
-        // Refine query if we have a set hint (e.g. SWSH123 -> setPrefix=SWSH)
+        let queries: string[] = [];
+        // Remove leading zeros for flexible matching (API sometimes uses 1 instead of 001)
+        const cleanNum = number.replace(/^0+/, ''); 
+        // Keep zeros for formats that require it (e.g. SWSH001)
+        const rawNum = number; 
+
+        // Strategy A: Promo / Prefix Logic (High Priority)
         if (setPrefix) {
             const promoSetId = await resolvePromoSet(setPrefix);
+            
             if (promoSetId) {
-                q += ` set.id:${promoSetId}`;
+                // If we resolved a specific promo set (e.g. 'swshp'), target it directly
+                queries.push(`number:"${rawNum}" set.id:${promoSetId}`);
+                // Try clean num too
+                if (cleanNum !== rawNum) queries.push(`number:"${cleanNum}" set.id:${promoSetId}`);
             } else {
-                q += ` (id:${setPrefix.toLowerCase()}* OR set.id:${setPrefix.toLowerCase()}*)`;
+                // Generic prefix search (e.g. subset 'TG' inside a set)
+                // Try number:"TG01"
+                queries.push(`number:"${setPrefix}${cleanNum}"`);
+                // Try number:"TG01" with wildcard on set ID
+                queries.push(`number:"${cleanNum}" (id:${setPrefix.toLowerCase()}* OR set.id:${setPrefix.toLowerCase()}*)`);
             }
-        } else if (total) {
-            // For standard sets, add printedTotal to query
-            const isStandardFormat = /^\d+$/.test(number); 
-            if (isStandardFormat) {
-                 q += ` set.printedTotal:${total}`;
-            }
+        } 
+        
+        // Strategy B: Standard Set Fraction Logic (058/102)
+        if (total) {
+            // Strict: Number + Total
+            queries.push(`number:"${rawNum}" set.printedTotal:${total}`);
+            // If total didn't match, maybe it's secret rare (number > printedTotal)
+            // Just search number
+            queries.push(`number:"${rawNum}"`);
         }
 
+        // Strategy C: Raw Search (Catch-all)
+        // If query is "TG13", search number:"TG13"
+        queries.push(`number:"${rawNum}"`);
+        // If "058", search "58"
+        if (cleanNum !== rawNum) queries.push(`number:"${cleanNum}"`);
+
+        // Helper to run query
         const runQuery = async (query: string) => {
-            const response = await fetch(`${API_BASE_URL}/cards?q=${encodeURIComponent(query)}`, { headers });
+            const response = await fetch(`${'a7affd7c-1932-4310-b887-e41229cd5924'}/cards?q=${encodeURIComponent(query)}`, { headers });
+            //console.log(`[TCGAPI] Searching: ${query}`);
+            const response = await fetch(`${'a7affd7c-1932-4310-b887-e41229cd5924'}/cards?q=${encodeURIComponent(query)}`, { headers: HEADERS });
             if (!response.ok) return [];
             return (await response.json()).data || [];
         };
 
-        let candidates = await runQuery(q);
+        // Run queries in sequence until results found
+        let candidates: any[] = [];
+        const seenIds = new Set();
 
-        // Fallback: If strict search failed (likely due to total mismatch or set prefix issues), try number only
-        if (candidates.length === 0 && (total || setPrefix)) {
-            console.log("Strict search failed, trying fallback by number only:", number);
-            candidates = await runQuery(`number:"${number}"`);
+        for (const q of queries) {
+            const results = await runQuery(q);
+            if (results.length > 0) {
+                // Filter duplicates if multiple queries return same cards
+                for (const c of results) {
+                    if (!seenIds.has(c.id)) {
+                        candidates.push(c);
+                        seenIds.add(c.id);
+                    }
+                }
+                // If we found exact matches, we can stop.
+                if (candidates.length > 0) break;
+            }
         }
         
         // Post-Processing: Filtering & Sorting
         if (candidates.length > 0) {
-            // 1. Exact Number Match Preference (case insensitive)
-            const exactMatches = candidates.filter((c: any) => c.number.toLowerCase() === number.toLowerCase());
+            // 1. Prioritize exact number match
+            // API fuzzy match might return number:"11" when searching "1"
+            const exactMatches = candidates.filter((c: any) => 
+                c.number.toLowerCase() === rawNum.toLowerCase() || 
+                c.number.toLowerCase() === cleanNum.toLowerCase() ||
+                c.number.toLowerCase() === `${setPrefix || ''}${cleanNum}`.toLowerCase()
+            );
             
-            // 2. If we have exact matches and a total was provided, prioritize the one matching total
-            if (exactMatches.length > 0 && total) {
-                const totalMatches = exactMatches.filter((c: any) => c.set.printedTotal.toString() === total);
-                if (totalMatches.length > 0) return totalMatches;
-                return exactMatches; // Return exact number matches even if total mismatches
+            if (exactMatches.length > 0) {
+                // 2. If we have exact matches and a total was provided, prioritize matching total
+                if (total) {
+                    const totalMatches = exactMatches.filter((c: any) => c.set.printedTotal.toString() === total);
+                    if (totalMatches.length > 0) return totalMatches;
+                }
+                return exactMatches; 
             }
-            
-            if (exactMatches.length > 0) return exactMatches;
         }
         
         return candidates;

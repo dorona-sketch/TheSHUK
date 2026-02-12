@@ -89,22 +89,24 @@ export const performOcrOnCorners = async (
                     { inlineData: { mimeType: 'image/jpeg', data: rightCornerBase64 } },
                     { text: "Image 2: Bottom-Right Corner" },
                     { text: `
-                        You are an OCR engine for Pokemon Cards. Analyze these corner images to find the Collector Number and Set Total.
+                        You are an OCR engine for Pokemon Cards. Analyze these corner images to find the Collector Number / ID.
                         
-                        Valid Formats to look for:
-                        1. "058/102" (Standard Fraction)
-                        2. "TG13/TG30" (Trainer Gallery)
-                        3. "SV50/SV94" (Shiny Vault)
-                        4. "SWSH123" or "SVP001" (Black Star Promos)
-                        5. "GG01/GG70" (Galarian Gallery)
+                        The ID is usually found in the bottom-left or bottom-right corner.
+                        
+                        Common Formats:
+                        1. Fraction: "058/102", "112/165", "5/18"
+                        2. Subset / Gallery: "TG13/TG30", "GG01/GG70", "SV50/SV94", "RC29/RC32"
+                        3. Promos: "SWSH123", "SVP001", "SM10"
+                        4. Simple: "TG13", "GG05" (Sometimes total is missing)
                         
                         Instructions:
-                        - Return the ID exactly as seen.
-                        - If you see "112/165" return it.
-                        - If you see "TG13" return it.
-                        - Ignore copyright dates (e.g. 2022, 1999).
+                        - Extract the ID exactly as seen.
+                        - Prefer "Number/Total" format if visible.
+                        - If you see "TG13" and "TG30", return "TG13/TG30".
+                        - If you see "112" and "165", return "112/165".
+                        - Ignore copyright years (e.g. 1999, 2022).
                         - Ignore artist names.
-                        - If ambiguous, favor the format matching [Letter][Number] or [Number]/[Number].
+                        - Provide a normalized version (uppercase, remove spaces).
                     `}
                 ]
             },
@@ -134,7 +136,7 @@ export const performOcrOnCorners = async (
         let cleanId = result.normalizedId;
         if (cleanId) {
             // Basic cleaning
-            cleanId = cleanId.trim().toUpperCase();
+            cleanId = cleanId.trim().toUpperCase().replace(/\s/g, '');
             // Validate: Must contain at least one digit
             if (!/\d/.test(cleanId)) {
                 return { normalized: null, raw: cleanId, confidence: 0 };
