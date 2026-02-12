@@ -34,31 +34,51 @@ export const CardRecognitionService = {
         console.log("OCR Result:", ocrResult);
 
         let candidates: any[] = [];
-        // Clean up OCR spacing issues (e.g. "0 5 8 / 1 0 2" -> "058/102")
+        
+        // Clean up OCR spacing & Common Char replacements (O->0, I->1, etc)
         let rawId = (ocrResult.normalized || '').replace(/\s+/g, '').toUpperCase();
+        
+        // Heuristic character fix for numbers (often OCR reads 058 as O58)
+        // We only replace O/I/l if they are mixed with numbers in a way that suggests they are digits
+        rawId = rawId.replace(/O/g, '0').replace(/[Il]/g, '1');
 
         // 3. API Lookup Stage (Parsing Logic)
         if (rawId && ocrResult.confidence > 0.4) {
             console.log("Stage 3: Parsing ID", rawId);
             
             // Regex Strategy:
-            // 1. Subsets (TG, GG, SV, RC) - e.g. TG13/TG30, SV1/SV94
-            const subsetMatch = rawId.match(/^([A-Z]{2,3})(\d+)\/([A-Z]{2,3})?(\d+)$/);
             
-            // 2. Standard Fraction (e.g. 058/102, 5/18)
+            // 1. Subsets with Denominator (e.g. TG13/TG30, RC5/RC32)
+            // Matches [Letters][Numbers]/[Letters][Numbers]
+            const subsetFullMatch = rawId.match(/^([A-Z]{1,3})(\d+)\/([A-Z]{1,3})?(\d+)$/);
+            
+            // 2. Subsets with Missing Denominator Prefix (e.g. TG13/30)
+            const subsetMixedMatch = rawId.match(/^([A-Z]{1,3})(\d+)\/(\d+)$/);
+
+            // 3. Standard Fraction (e.g. 058/102, 5/18)
             const fractionMatch = rawId.match(/^(\d+)\/(\d+)([A-Z]+)?$/);
             
-            // 3. Promo / Simple ID (e.g. SWSH123, SVP001)
+            // 4. Promo / Simple ID (e.g. SWSH123, SVP001, TG05)
+            // Matches [Letters][Numbers]
             const promoMatch = rawId.match(/^([A-Z]{2,5})[-]?(\d+)$/);
 
             try {
-                if (subsetMatch) {
+                if (subsetFullMatch) {
                     // e.g. TG13/TG30 -> Prefix=TG, Num=13
-                    const prefix = subsetMatch[1];
-                    const num = subsetMatch[2];
+                    const prefix = subsetFullMatch[1];
+                    const num = subsetFullMatch[2];
                     const fullId = `${prefix}${num}`;
-                    console.log("Matched Subset Pattern:", fullId);
-                    candidates = await searchCardByCollectorNumber(fullId);
+                    const total = subsetFullMatch[4];
+                    console.log("Matched Subset Pattern A:", fullId, "Total:", total);
+                    candidates = await searchCardByCollectorNumber(fullId, undefined, prefix);
+                } else if (subsetMixedMatch) {
+                    // e.g. TG13/30 -> Prefix=TG, Num=13
+                    const prefix = subsetMixedMatch[1];
+                    const num = subsetMixedMatch[2];
+                    const fullId = `${prefix}${num}`;
+                    const total = subsetMixedMatch[3];
+                    console.log("Matched Subset Pattern B:", fullId, "Total:", total);
+                    candidates = await searchCardByCollectorNumber(fullId, total, prefix);
                 } else if (fractionMatch) {
                     // e.g. 058/102 -> Num=058, Total=102
                     const number = fractionMatch[1];
@@ -67,8 +87,10 @@ export const CardRecognitionService = {
                     candidates = await searchCardByCollectorNumber(number, total);
                 } else if (promoMatch) {
                     // e.g. SWSH123 -> Prefix=SWSH, Num=123
-                    console.log("Matched Promo Pattern:", { prefix: promoMatch[1], num: promoMatch[2] });
-                    candidates = await searchCardByCollectorNumber(rawId, undefined, promoMatch[1]);
+                    const prefix = promoMatch[1];
+                    const num = promoMatch[2];
+                    console.log("Matched Promo/Simple Pattern:", { prefix, num, raw: rawId });
+                    candidates = await searchCardByCollectorNumber(rawId, undefined, prefix);
                 } else {
                     console.log("Fallback: Raw String Search");
                     candidates = await searchCardByCollectorNumber(rawId);
@@ -131,13 +153,16 @@ export const CardRecognitionService = {
 
             const userHashBL = computeDHash(userStrips.bl);
             const userHashBR = computeDHash(userStrips.br);
-            console.log("User Hashes:", { BL: userHashBL, BR: userHashBR });
-
+            
             // 2. Compare against candidates
             const scoredCandidates = await Promise.all(candidates.map(async (c) => {
+                // If candidate has no image, push to bottom
                 if (!c.imageUrl) return { ...c, distance: 1000, visualSimilarity: 0 };
 
                 try {
+                    // Optimized: Only fetch/hash if not identical to another candidate we already checked? 
+                    // For now, simpler to process all.
+                    
                     const cStrips = await extractIDStrips(c.imageUrl); 
                     if (!cStrips.bl || !cStrips.br) return { ...c, distance: 1000, visualSimilarity: 0 };
 
@@ -156,7 +181,7 @@ export const CardRecognitionService = {
                         distance: weightedDist, 
                         visualSimilarity: similarity,
                         matchSource: 'id_strip_signature' as const,
-                        _debug: { distBL, distBR, cHashBL }
+                        _debug: { distBL, distBR }
                     };
                 } catch (e) {
                     console.warn("Tie-break hash failed for candidate", c.id);
@@ -167,6 +192,9 @@ export const CardRecognitionService = {
             // 3. Sort by Similarity (Descending)
             scoredCandidates.sort((a, b) => (b.visualSimilarity || 0) - (a.visualSimilarity || 0));
 
+            // Logic Check: If multiple candidates share the exact same Image URL (e.g. variants from same API ID),
+            // they will have identical scores. We keep them adjacent.
+            
             console.table(scoredCandidates.map(c => ({
                 name: c.cardName,
                 variant: c.variant,

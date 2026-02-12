@@ -40,11 +40,13 @@ const GroupCard: React.FC<{ group: Group, onClick: () => void, recommendationRea
 
 export const CommunityHub: React.FC<CommunityHubProps> = ({ onNavigateGroup }) => {
     const { groups, getRecommendedGroups, currentUser } = useStore();
-    const recommendations = getRecommendedGroups();
+    
+    // Safety check for getRecommendedGroups
+    const recommendations = getRecommendedGroups ? getRecommendedGroups() : [];
     
     // Fallback: Just show all groups if no specific recommendations or user not logged in
-    const allGroups = groups;
-    const yourGroups = groups.filter(g => currentUser?.joinedGroupIds?.includes(g.id));
+    const allGroups = groups || [];
+    const yourGroups = (groups || []).filter(g => currentUser?.joinedGroupIds?.includes(g.id));
 
     return (
         <div className="space-y-8 pb-12 animate-fade-in-up">
