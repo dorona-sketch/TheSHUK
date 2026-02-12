@@ -4,7 +4,7 @@
 import { getEnv } from '../utils/env';
 
 const API_BASE_URL = 'https://api.pokemontcg.io/v2';
-const API_KEY_ENV_NAME = 'API_KEY';
+const API_KEY_ENV_NAME = 'a7affd7c-1932-4310-b887-e41229cd5924';
 const MISSING_API_KEY_MESSAGE =
   'Pokemon TCG API key is not configured. Please set VITE_API_KEY (or API_KEY) in your environment to enable card data and pricing features.';
 
