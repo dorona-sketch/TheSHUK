@@ -85,6 +85,16 @@ const PokeVaultContent = () => {
       }
   }, [listings, selectedListing]);
 
+  // --- CRITICAL: Sync BidModal Listing ---
+  useEffect(() => {
+      if (bidModalState.isOpen && bidModalState.listing) {
+          const freshListing = listings.find(l => l.id === bidModalState.listing?.id);
+          if (freshListing && freshListing !== bidModalState.listing) {
+              setBidModalState(prev => ({ ...prev, listing: freshListing }));
+          }
+      }
+  }, [listings, bidModalState.isOpen, bidModalState.listing]);
+
   // --- ROUTING / NAVIGATION LOGIC ---
   useEffect(() => {
       const syncRoute = () => {
@@ -233,8 +243,10 @@ const PokeVaultContent = () => {
         return;
     }
 
+    const isOwner = listing.sellerId === currentUser.id;
+
     if (action === 'MANAGE') {
-        if (listing.sellerId !== currentUser.id) {
+        if (!isOwner) {
             showNotification("Only the seller can manage this listing.", 'error');
             return;
         }
@@ -266,14 +278,11 @@ const PokeVaultContent = () => {
         return;
     }
 
-    // Specific Seller Restriction: Only block BUY and BID on own items
-    // If action is MANAGE, it exited above.
-    if (listing.sellerId === currentUser.id) {
-        if (action === 'BUY' || action === 'BID') {
-            showNotification("You cannot buy or bid on your own listing.", 'error');
-            return;
-        }
-        // Chatting with self is allowed (useful for preview/testing)
+    // Specific Seller Restriction: Block BUY and BID on own items
+    // Allow CHAT (useful for preview/testing) and MANAGE (handled above)
+    if (isOwner && (action === 'BUY' || action === 'BID')) {
+        showNotification("Sellers cannot bid on or buy their own items.", 'error');
+        return;
     }
 
     if (action === 'CHAT') {
@@ -331,14 +340,24 @@ const PokeVaultContent = () => {
       if (view !== 'DETAILS' && view !== 'LIVE') setSelectedListing(null);
   }, [navigateTo]);
 
+  const handleSellClick = useCallback(() => {
+      if (!currentUser) {
+          showNotification("Please sign in to list items.", 'error');
+          navigateTo('LOGIN');
+          return;
+      }
+      setEditingListing(null);
+      setAddListingModalOpen(true);
+  }, [currentUser, navigateTo, showNotification]);
+
   const handleAddOrEditListing = (data: any) => {
       if (editingListing) {
           updateListing(editingListing.id, data);
-          showNotification("Listing updated!", "success");
+          showNotification("Listing updated successfully!", "success");
           setEditingListing(null);
       } else {
           addListing(data);
-          showNotification("Listing created!", "success");
+          showNotification("Listing created successfully!", "success");
       }
       setAddListingModalOpen(false);
   };
@@ -401,15 +420,13 @@ const PokeVaultContent = () => {
             </div>
             
             <div className="flex items-center gap-3 w-full md:w-auto">
-                {currentUser?.role === 'SELLER' && (
-                    <button
-                        onClick={() => { setEditingListing(null); setAddListingModalOpen(true); }}
-                        className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors"
-                    >
-                        <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                        New Listing
-                    </button>
-                )}
+                <button
+                    onClick={handleSellClick}
+                    className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 transition-colors"
+                >
+                    <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    New Listing
+                </button>
             </div>
         </div>
 
@@ -604,7 +621,7 @@ const PokeVaultContent = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-        {currentView !== 'LIVE' && <Navbar currentUser={currentUser} onNavigate={handleNavbarNavigate} />}
+        {currentView !== 'LIVE' && <Navbar currentUser={currentUser} onNavigate={handleNavbarNavigate} onSell={handleSellClick} />}
         
         {notification && (
             <div className={`fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white font-medium z-50 animate-bounce ${notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
@@ -644,17 +661,17 @@ const PokeVaultContent = () => {
 };
 
 const App = () => {
-    return (
-        <ErrorBoundary>
-            <AuthProvider>
-                <ChatProvider>
-                    <StoreProvider>
-                        <PokeVaultContent />
-                    </StoreProvider>
-                </ChatProvider>
-            </AuthProvider>
-        </ErrorBoundary>
-    );
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        <StoreProvider>
+          <ChatProvider>
+            <PokeVaultContent />
+          </ChatProvider>
+        </StoreProvider>
+      </AuthProvider>
+    </ErrorBoundary>
+  );
 };
 
 export default App;

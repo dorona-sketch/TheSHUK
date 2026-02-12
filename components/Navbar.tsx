@@ -8,9 +8,10 @@ import { NotificationDropdown } from './NotificationDropdown';
 interface NavbarProps {
   currentUser: User | null;
   onNavigate: (view: any, id?: string) => void;
+  onSell: () => void;
 }
 
-export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate }) => {
+export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell }) => {
   const { totalUnreadCount } = useChat();
   const { appMode, setAppMode, notifications } = useStore();
   const [showNotifications, setShowNotifications] = useState(false);
@@ -85,10 +86,19 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate }) => {
                 Community
             </button>
 
+            {/* Sell Button - Global Access */}
+            <button 
+                onClick={onSell}
+                className="hidden md:flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-bold rounded-full hover:bg-black transition-colors shadow-sm active:scale-95 transform"
+            >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                Sell
+            </button>
+
             {currentUser ? (
                 <>
-                    {/* Seller Dashboard Link */}
-                    {currentUser.role === 'SELLER' ? (
+                    {/* Seller Dashboard Link (Only for Sellers) */}
+                    {currentUser.role === 'SELLER' && (
                         <button 
                             onClick={() => onNavigate('DASHBOARD')}
                             className="hidden md:flex items-center text-sm font-bold text-primary-700 hover:text-primary-800 bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-full border border-primary-200 transition-colors"
@@ -96,11 +106,6 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate }) => {
                             <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                             Dashboard
                         </button>
-                    ) : (
-                        <div className="hidden md:flex items-center text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
-                            <span className="font-medium text-gray-700 mr-2">Balance:</span>
-                            ${currentUser.walletBalance.toLocaleString()}
-                        </div>
                     )}
 
                     {/* Notification Bell */}
@@ -180,22 +185,20 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate }) => {
             <button onClick={handleModeToggle} className="text-xs text-gray-500 font-medium flex items-center gap-1">
                 View: <span className="text-primary-600">{getModeLabel()}</span>
             </button>
-            <button 
-                onClick={() => onNavigate('COMMUNITY')}
-                className="text-xs font-bold text-gray-600 flex items-center gap-1"
-            >
-                Community
-            </button>
-            
-            {/* Mobile Dashboard Link */}
-            {currentUser?.role === 'SELLER' && (
+            <div className="flex items-center gap-4">
                 <button 
-                    onClick={() => onNavigate('DASHBOARD')}
-                    className="text-xs font-bold text-primary-700 flex items-center gap-1"
+                    onClick={onSell}
+                    className="text-xs font-bold text-gray-900 flex items-center gap-1"
                 >
-                    Dashboard &rarr;
+                    + Sell
                 </button>
-            )}
+                <button 
+                    onClick={() => onNavigate('COMMUNITY')}
+                    className="text-xs font-bold text-gray-600 flex items-center gap-1"
+                >
+                    Community
+                </button>
+            </div>
         </div>
       </div>
     </nav>

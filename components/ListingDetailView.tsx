@@ -4,8 +4,10 @@ import { Listing, User, ListingType, Bid, BreakStatus, BreakEntryStatus, Product
 import { useStore } from '../context/StoreContext';
 import { ListingCard } from './ListingCard';
 import { getLocationInfo } from '../services/geminiService';
+import { fetchCardById } from '../services/tcgApiService';
 import { Countdown } from './Countdown';
 import { formatLocalTime, formatSmartDate } from '../utils/dateUtils';
+import { TAG_DISPLAY_LABELS } from '../constants';
 
 interface ListingDetailViewProps {
   listing: Listing;
@@ -96,6 +98,14 @@ const BreakInfoPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
                             <div className="text-sm font-medium text-gray-900">{listing.preferredLiveWindow}</div>
                         </div>
                     )}
+                    {listing.liveLink && (
+                        <div className="bg-white p-3 rounded-lg border border-purple-100 shadow-sm md:col-span-2 flex items-center gap-2">
+                            <span className="text-xs text-purple-500 font-bold uppercase">Platform:</span>
+                            <a href={listing.liveLink} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-purple-700 hover:underline truncate">
+                                {listing.liveLink}
+                            </a>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -130,16 +140,17 @@ const BreakInfoPanel: React.FC<{ listing: Listing }> = ({ listing }) => {
     );
 };
 
-const ParticipantsList: React.FC<{ listing: Listing, isOwner: boolean }> = ({ listing, isOwner }) => {
+const ParticipantsList: React.FC<{ listing: Listing, isOwner: boolean, currentUserId?: string }> = ({ listing, isOwner, currentUserId }) => {
     const { getBreakEntries, removeBreakEntry } = useStore();
     if (!listing?.id) return null;
     
-    const entries = getBreakEntries(listing.id);
+    // Defensive empty array fallback
+    const entries = getBreakEntries(listing.id) || [];
     
     if (listing.type !== ListingType.TIMED_BREAK) return null;
 
-    const handleRemove = async (entryId: string) => {
-        if(confirm("Remove this participant? This will open a spot.")) {
+    const handleRemove = async (entryId: string, isSelf: boolean) => {
+        if(confirm(isSelf ? "Leave this break? You will lose your spot." : "Remove this participant? This will open a spot.")) {
             const res = await removeBreakEntry(entryId);
             if (!res.success) alert(res.message);
         }
@@ -156,41 +167,48 @@ const ParticipantsList: React.FC<{ listing: Listing, isOwner: boolean }> = ({ li
             <div className="max-h-60 overflow-y-auto">
                 {entries.length === 0 ? <div className="p-8 text-center text-gray-500 text-sm">Be the first to join!</div> : (
                     <div className="divide-y divide-gray-100">
-                        {entries.map((entry) => (
-                            <div key={entry.id} className="px-5 py-3 flex items-center justify-between gap-3 group">
-                                <div className="flex items-center gap-3 min-w-0">
-                                    <img 
-                                        src={entry.userAvatar || `https://ui-avatars.com/api/?name=${entry.userName}`} 
-                                        className="w-8 h-8 rounded-full border border-gray-200"
-                                        alt={entry.userName}
-                                    />
-                                    <div className="min-w-0">
-                                        <div className="text-sm font-medium text-gray-900 truncate">{entry.userName}</div>
-                                        <div className="text-xs text-gray-500">{formatSmartDate(entry.joinedAt)}</div>
+                        {entries.map((entry) => {
+                            const isMe = currentUserId === entry.userId;
+                            const canRemove = isOwner || (isMe && listing.breakStatus !== BreakStatus.LIVE && listing.breakStatus !== BreakStatus.COMPLETED && listing.breakStatus !== BreakStatus.CANCELLED);
+                            
+                            return (
+                                <div key={entry.id} className="px-5 py-3 flex items-center justify-between gap-3 group">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <img 
+                                            src={entry.userAvatar || `https://ui-avatars.com/api/?name=${entry.userName}`} 
+                                            className="w-8 h-8 rounded-full border border-gray-200"
+                                            alt={entry.userName}
+                                        />
+                                        <div className="min-w-0">
+                                            <div className="text-sm font-medium text-gray-900 truncate">
+                                                {entry.userName} {isMe && <span className="text-xs text-gray-400">(You)</span>}
+                                            </div>
+                                            <div className="text-xs text-gray-500">{formatSmartDate(entry.joinedAt)}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {entry.status === BreakEntryStatus.CHARGED && (
+                                            <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">CONFIRMED</span>
+                                        )}
+                                        {entry.status === BreakEntryStatus.AUTHORIZED && (
+                                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">AUTHORIZED</span>
+                                        )}
+                                        {entry.status === BreakEntryStatus.CANCELLED && (
+                                            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">REFUNDED</span>
+                                        )}
+                                        {canRemove && entry.status !== BreakEntryStatus.CANCELLED && (
+                                            <button 
+                                                onClick={() => handleRemove(entry.id, isMe)}
+                                                className="text-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title={isMe ? "Leave Break" : "Remove Participant"}
+                                            >
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    {entry.status === BreakEntryStatus.CHARGED && (
-                                        <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">CONFIRMED</span>
-                                    )}
-                                    {entry.status === BreakEntryStatus.AUTHORIZED && (
-                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">AUTHORIZED</span>
-                                    )}
-                                    {entry.status === BreakEntryStatus.CANCELLED && (
-                                        <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">REFUNDED</span>
-                                    )}
-                                    {isOwner && listing.breakStatus !== BreakStatus.COMPLETED && listing.breakStatus !== BreakStatus.CANCELLED && (
-                                        <button 
-                                            onClick={() => handleRemove(entry.id)}
-                                            className="text-gray-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            title="Remove Participant"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
@@ -328,10 +346,10 @@ const ResultsTab: React.FC<{
                                 </div>
                                 <input type="file" className="hidden" multiple accept="image/*" onChange={(e) => {
                                     if(e.target.files) {
-                                        Array.from(e.target.files).forEach(f => {
+                                        Array.from(e.target.files).forEach((f) => {
                                             const r = new FileReader();
                                             r.onloadend = () => setMedia(prev => [...prev, r.result as string]);
-                                            r.readAsDataURL(f);
+                                            r.readAsDataURL(f as Blob);
                                         });
                                     }
                                 }} />
@@ -375,19 +393,50 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
 }) => {
     if (!listing) return <div className="p-8 text-center text-gray-500">Listing not available</div>;
 
-    const { getBidsByListingId, getRelatedListings, scheduleBreak, startBreak, completeBreak, cancelBreak } = useStore();
-    const bids = getBidsByListingId(listing.id);
-    const related = getRelatedListings(listing);
+    const { getBidsByListingId, getRelatedListings, scheduleBreak, startBreak, completeBreak, cancelBreak, joinWaitlist } = useStore();
+    
+    // Safe accessors for lists that might be missing in partial data
+    const bids = useMemo(() => getBidsByListingId(listing.id) || [], [listing.id, getBidsByListingId]);
+    const related = useMemo(() => getRelatedListings(listing) || [], [listing, getRelatedListings]);
     
     const [scheduleDate, setScheduleDate] = useState<string>('');
     const [streamLink, setStreamLink] = useState<string>('https://twitch.tv/pokevault_official');
     const [isScheduling, setIsScheduling] = useState(false);
     const [isJoining, setIsJoining] = useState(false); // New Loading State
+    const [apiCard, setApiCard] = useState<any>(null);
+
+    // Fetch API Data if ID exists
+    useEffect(() => {
+        const loadApiData = async () => {
+            if (listing.tcgCardId) {
+                const data = await fetchCardById(listing.tcgCardId);
+                if (data) setApiCard(data);
+            }
+        };
+        loadApiData();
+    }, [listing.tcgCardId]);
 
     const isOwner = currentUser?.id === listing.sellerId;
     const isAuction = listing.type === ListingType.AUCTION;
     const isBreak = listing.type === ListingType.TIMED_BREAK;
     const isEnded = listing.isSold || (isBreak && (listing.breakStatus === BreakStatus.COMPLETED || listing.breakStatus === BreakStatus.CANCELLED));
+
+    // Determine target date and label for Countdown
+    let targetDate: Date | undefined;
+    let timerLabel = '';
+    
+    if (isAuction) {
+        targetDate = listing.endsAt;
+        timerLabel = 'Ends in';
+    } else if (isBreak) {
+        if (listing.breakStatus === BreakStatus.SCHEDULED) {
+            targetDate = listing.scheduledLiveAt;
+            timerLabel = 'Live in';
+        } else if (listing.breakStatus === BreakStatus.OPEN) {
+            targetDate = listing.closesAt;
+            timerLabel = 'Closes in';
+        }
+    }
 
     const handleSchedule = () => {
         if (!scheduleDate) return alert("Pick a date");
@@ -398,6 +447,8 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
         const res = scheduleBreak(listing.id, date, streamLink);
         if (res.success) {
             setIsScheduling(false);
+            alert(res.message);
+        } else {
             alert(res.message);
         }
     };
@@ -417,6 +468,12 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
         }
     };
 
+    const handleWaitlist = async () => {
+        if (!currentUser) return alert("Please sign in.");
+        const res = await joinWaitlist(listing.id);
+        alert(res.message);
+    };
+
     const renderBreakAction = () => {
         if (!isOwner) {
             if (listing.breakStatus === BreakStatus.LIVE) {
@@ -427,7 +484,17 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                 );
             }
             if (listing.breakStatus === BreakStatus.FULL_PENDING_SCHEDULE || listing.breakStatus === BreakStatus.SCHEDULED) {
-                return <div className="w-full py-4 bg-gray-100 text-gray-500 font-bold rounded-xl text-center">Wait for Stream</div>;
+                return (
+                    <div className="space-y-3">
+                        <div className="w-full py-4 bg-gray-100 text-gray-500 font-bold rounded-xl text-center">Wait for Stream</div>
+                        <button 
+                            onClick={handleWaitlist}
+                            className="w-full py-2 border border-gray-300 text-gray-600 font-bold rounded-xl hover:bg-gray-50 text-sm transition-colors"
+                        >
+                            Join Waitlist
+                        </button>
+                    </div>
+                );
             }
             if (listing.breakStatus === BreakStatus.OPEN) {
                 return (
@@ -508,7 +575,38 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                     <div className="hidden lg:block bg-white p-6 rounded-xl border border-gray-200">
                         <h3 className="text-lg font-bold text-gray-900 mb-3">Description</h3>
                         <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{listing.description}</p>
+                        {listing.variantTags && listing.variantTags.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-100">
+                                {listing.variantTags.map(tag => (
+                                    <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-bold rounded border border-gray-200">
+                                        {TAG_DISPLAY_LABELS[tag] || tag}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                         {listing.sellerLocation && <LocationGrounding location={listing.sellerLocation} />}
+                        
+                        {apiCard && (
+                            <div className="mt-6 pt-6 border-t border-gray-100">
+                                <h4 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wide">Card Details</h4>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <span className="block text-gray-500 text-xs">Artist</span>
+                                        <span className="font-medium">{apiCard.artist || 'Unknown'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-gray-500 text-xs">Rarity</span>
+                                        <span className="font-medium">{apiCard.rarity || 'Unknown'}</span>
+                                    </div>
+                                    {apiCard.flavorText && (
+                                        <div className="col-span-2 mt-2">
+                                            <span className="block text-gray-500 text-xs">Flavor Text</span>
+                                            <p className="italic text-gray-600 mt-1">"{apiCard.flavorText}"</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <BreakInfoPanel listing={listing} />
@@ -543,16 +641,16 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                                 {isBreak && <span className="text-sm text-gray-500 font-medium">per spot</span>}
                             </div>
                             
-                            {listing.endsAt && !isEnded && (
+                            {targetDate && !isEnded && (
                                 <div className="mt-2 flex items-center gap-2 text-red-600 bg-red-50 w-fit px-3 py-1 rounded-lg">
                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                    <Countdown targetDate={listing.endsAt} label="Ends in" className="text-sm font-bold" />
+                                    <Countdown targetDate={targetDate} label={timerLabel} className="text-sm font-bold" />
                                 </div>
                             )}
-                            {isBreak && listing.scheduledLiveAt && (
-                                <div className="mt-2 flex items-center gap-2 text-purple-600 bg-purple-50 w-fit px-3 py-1 rounded-lg">
-                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                    <span className="text-sm font-bold">Live: {formatLocalTime(listing.scheduledLiveAt)}</span>
+                            {/* Display Absolute Local Time for clarity */}
+                            {targetDate && !isEnded && (
+                                <div className="mt-1 text-xs text-gray-400 font-medium pl-1">
+                                    {formatLocalTime(targetDate)}
                                 </div>
                             )}
                         </div>
@@ -561,19 +659,18 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                             {isBreak ? renderBreakAction() : (
                                 !isEnded ? (
                                     <button 
-                                        onClick={() => onInteract(listing, isAuction ? 'BID' : 'BUY')}
-                                        disabled={isOwner}
+                                        onClick={() => isOwner ? onInteract(listing, 'MANAGE') : onInteract(listing, isAuction ? 'BID' : 'BUY')}
                                         className={`w-full py-4 rounded-xl shadow-lg font-bold text-white transition-all transform hover:-translate-y-1 ${
                                             isOwner 
-                                            ? 'bg-gray-400 cursor-not-allowed' 
+                                            ? 'bg-gray-800 hover:bg-gray-900' 
                                             : (isAuction ? 'bg-amber-500 hover:bg-amber-600' : 'bg-primary-600 hover:bg-primary-700')
                                         }`}
                                     >
-                                        {isOwner ? 'Your Listing' : (isAuction ? 'Place Bid' : 'Buy Now')}
+                                        {isOwner ? 'Edit Listing Details' : (isAuction ? 'Place Bid' : 'Buy Now')}
                                     </button>
                                 ) : (
                                     <div className="w-full py-4 bg-gray-100 text-gray-500 font-bold rounded-xl text-center uppercase tracking-wide">
-                                        Sold
+                                        {listing.isSold ? 'Sold' : 'Ended'}
                                     </div>
                                 )
                             )}
@@ -623,10 +720,31 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                         <h3 className="text-lg font-bold text-gray-900 mb-3">Description</h3>
                         <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{listing.description}</p>
                         {listing.sellerLocation && <LocationGrounding location={listing.sellerLocation} />}
+                        {apiCard && (
+                            <div className="mt-6 pt-6 border-t border-gray-100">
+                                <h4 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wide">Card Details</h4>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <span className="block text-gray-500 text-xs">Artist</span>
+                                        <span className="font-medium">{apiCard.artist || 'Unknown'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-gray-500 text-xs">Rarity</span>
+                                        <span className="font-medium">{apiCard.rarity || 'Unknown'}</span>
+                                    </div>
+                                    {apiCard.flavorText && (
+                                        <div className="col-span-2 mt-2">
+                                            <span className="block text-gray-500 text-xs">Flavor Text</span>
+                                            <p className="italic text-gray-600 mt-1">"{apiCard.flavorText}"</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {isAuction && <BidHistory bids={bids} listing={listing} />}
-                    {isBreak && <ParticipantsList listing={listing} isOwner={isOwner} />}
+                    {isBreak && <ParticipantsList listing={listing} isOwner={isOwner} currentUserId={currentUser?.id} />}
                 </div>
             </div>
 

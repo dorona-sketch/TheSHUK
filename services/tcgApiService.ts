@@ -58,17 +58,20 @@ export const fetchCardById = async (id: string) => {
 
 /**
  * Fetches the SINGLE most expensive card in the set to determine "THE CHASE".
+ * Logic: Query cards in set, sort by holofoil market price descending.
  */
 export const fetchSetChaseCard = async (setId: string) => {
     const cacheKey = `chase_${setId}`;
     if (CACHE[cacheKey] && Date.now() - CACHE[cacheKey].timestamp < CACHE_TTL) return CACHE[cacheKey].data;
 
     try {
-        // Sort by market price descending, take 1.
+        // Query to get the highest market price across common high-value types
+        // Note: The API sort logic is specific. We try to find the absolute max.
         const response = await fetch(
-            `${API_BASE_URL}/cards?q=set.id:${setId}&orderBy=-tcgplayer.prices.holofoil.market,-tcgplayer.prices.normal.market&pageSize=1`, 
+            `${API_BASE_URL}/cards?q=set.id:${setId}&orderBy=-tcgplayer.prices.holofoil.market,-tcgplayer.prices.1stEditionHolofoil.market,-tcgplayer.prices.normal.market&pageSize=1`, 
             { headers: HEADERS }
         );
+        
         if (!response.ok) return null;
         const json = await response.json();
         const card = json.data?.[0] || null;
@@ -84,7 +87,6 @@ export const fetchSetChaseCard = async (setId: string) => {
 };
 
 export const fetchSetHighValueCards = async (setId: string, limit: number = 5) => {
-    // Legacy support, redirects to generic query
     try {
         const response = await fetch(
             `${API_BASE_URL}/cards?q=set.id:${setId}&orderBy=-tcgplayer.prices.holofoil.market,-tcgplayer.prices.normal.market&pageSize=${limit}`, 
@@ -109,12 +111,23 @@ export const getCardPrice = async (cardId: string, variant?: string): Promise<{ 
             const apiKey = VARIANT_MAP[variant];
             if (apiKey && prices[apiKey]) {
                 priceData = prices[apiKey];
+            } else if (variant !== 'Normal' && prices.holofoil) {
+                // Fallback: Many "Special" rarities (SIR, IR) just use 'holofoil' pricing bucket
+                priceData = prices.holofoil;
+            } else if (variant === 'Normal' && prices.normal) {
+                priceData = prices.normal;
             }
         }
 
-        // 2. Fallback Priority: Holofoil > Normal > Reverse Holofoil > 1st Edition
+        // 2. Fallback Priority (if no variant or specific variant data missing)
         if (!priceData) {
-             priceData = prices.holofoil || prices.normal || prices.reverseHolofoil || prices['1stEditionHolofoil'] || prices['1stEdition'] || prices.unlimited;
+             priceData = 
+                prices.holofoil || 
+                prices['1stEditionHolofoil'] || 
+                prices.reverseHolofoil || 
+                prices.normal || 
+                prices['1stEdition'] || 
+                prices.unlimited;
         }
 
         if (priceData) {
@@ -134,56 +147,82 @@ export const getCardPrice = async (cardId: string, variant?: string): Promise<{ 
 export const resolvePromoSet = async (prefix: string): Promise<string | null> => {
     const p = prefix.toLowerCase().replace(/[^a-z0-9]/g, '');
     const mappings: Record<string, string> = {
-        'svp': 'svp', 'sv': 'sv1', 'pal': 'sv2', 'obf': 'sv3', '151': 'sv3a',
-        'swsh': 'swshp', 'crz': 'swsh12pt5', 'sit': 'swsh12', 'lor': 'swsh11',
-        'asr': 'swsh10', 'brs': 'swsh9', 'fst': 'swsh8', 'cel': 'cel25',
-        'evs': 'swsh7', 'cre': 'swsh6', 'bst': 'swsh5', 'sf': 'swsh45',
-        'vv': 'swsh4', 'cpa': 'swsh35', 'daa': 'swsh3', 'rcl': 'swsh2', 'ssh': 'swsh1',
-        'sm': 'smp', 'hif': 'sm115', 'xy': 'xyp', 'evo': 'xy12', 'base': 'base1'
+        'svp': 'svp', // Scarlet & Violet Promo
+        'swsh': 'swshp', // Sword & Shield Promo
+        'sm': 'smp', // Sun & Moon Promo
+        'xy': 'xyp', // XY Promo
+        'bw': 'bwp', // Black & White Promo
+        'hgss': 'hsp', // HGSS Promo
+        'pop': 'pop', // POP Series
+        // Common misreads or alternative codes
+        'tg': 'tg', // Trainer Gallery (usually subsets, handled by ID logic)
+        'gg': 'gg', // Galarian Gallery
+        'sv': 'sv'  // Shiny Vault
     };
+    
+    // Direct match or partial match
     if (mappings[p]) return mappings[p];
-    if (p.startsWith('pop')) return p; 
-    return null;
+    
+    // Try to find if it matches known set codes directly (e.g. 'evs', 'base1')
+    return p.length >= 3 ? p : null;
 };
 
 /**
  * Enhanced search to handle TG, SV, and Promo formats correctly.
+ * Now includes fallback logic if 'total' mismatch causes empty results.
  */
 export const searchCardByCollectorNumber = async (number: string, total?: string, setPrefix?: string): Promise<any[]> => {
     try {
-        // TCG API often stores TG cards as number:"TG01" not "TG01/TG30"
-        // It stores Shiny Vault as number:"SV01"
-        // It stores Promos as number:"SWSH001"
-        
         let q = `number:"${number}"`;
         
-        // Refine query if we have a set hint
+        // Refine query if we have a set hint (e.g. SWSH123 -> setPrefix=SWSH)
         if (setPrefix) {
             const promoSetId = await resolvePromoSet(setPrefix);
-            if (promoSetId) q += ` set.id:${promoSetId}`;
-            // If prefix looks like a standard set code (e.g. SWSH123 -> swsh), try to filter
-            else if (setPrefix.length >= 2) q += ` (set.id:${setPrefix.toLowerCase()}* OR id:${setPrefix.toLowerCase()}*)`;
+            if (promoSetId) {
+                q += ` set.id:${promoSetId}`;
+            } else {
+                q += ` (id:${setPrefix.toLowerCase()}* OR set.id:${setPrefix.toLowerCase()}*)`;
+            }
         } else if (total) {
-            // Only use printedTotal for standard numbered cards (e.g. 058/102)
-            // Do NOT use it for TG/SV subsets as their denominators don't match the main set total in API
-            if (!number.startsWith('TG') && !number.startsWith('SV') && !number.startsWith('GG')) {
+            // For standard sets, add printedTotal to query
+            const isStandardFormat = /^\d+$/.test(number); 
+            if (isStandardFormat) {
                  q += ` set.printedTotal:${total}`;
             }
         }
 
-        const response = await fetch(`${API_BASE_URL}/cards?q=${encodeURIComponent(q)}`, { headers: HEADERS });
-        if (!response.ok) return [];
-        const json = await response.json();
-        let candidates = json.data || [];
+        const runQuery = async (query: string) => {
+            const response = await fetch(`${API_BASE_URL}/cards?q=${encodeURIComponent(query)}`, { headers: HEADERS });
+            if (!response.ok) return [];
+            return (await response.json()).data || [];
+        };
+
+        let candidates = await runQuery(q);
+
+        // Fallback: If strict search failed (likely due to total mismatch or set prefix issues), try number only
+        if (candidates.length === 0 && (total || setPrefix)) {
+            console.log("Strict search failed, trying fallback by number only:", number);
+            candidates = await runQuery(`number:"${number}"`);
+        }
         
-        // Exact Match Filtering
+        // Post-Processing: Filtering & Sorting
         if (candidates.length > 0) {
-            // Prioritize exact number matches (case insensitive)
+            // 1. Exact Number Match Preference (case insensitive)
             const exactMatches = candidates.filter((c: any) => c.number.toLowerCase() === number.toLowerCase());
+            
+            // 2. If we have exact matches and a total was provided, prioritize the one matching total
+            if (exactMatches.length > 0 && total) {
+                const totalMatches = exactMatches.filter((c: any) => c.set.printedTotal.toString() === total);
+                if (totalMatches.length > 0) return totalMatches;
+                return exactMatches; // Return exact number matches even if total mismatches
+            }
+            
             if (exactMatches.length > 0) return exactMatches;
         }
+        
         return candidates;
     } catch (e) {
+        console.error("Search error", e);
         return [];
     }
 };

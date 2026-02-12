@@ -20,7 +20,8 @@ export const ListingCard = React.memo<ListingCardProps>(({
   currentUserId
 }) => {
   const [showPreview, setShowPreview] = useState(false);
-  const [previewPos, setPreviewPos] = useState<'left' | 'right'>('right');
+  const [previewSide, setPreviewSide] = useState<'left' | 'right'>('right');
+  const [previewAlign, setPreviewAlign] = useState<'top' | 'bottom'>('top');
   const [imgError, setImgError] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -144,12 +145,24 @@ export const ListingCard = React.memo<ListingCardProps>(({
       if (enableHoverPreview && cardRef.current) {
           const rect = cardRef.current.getBoundingClientRect();
           const windowWidth = window.innerWidth;
-          // Check if there is space on the right (320px is approx preview width + margin)
-          if (windowWidth - rect.right < 340) {
-              setPreviewPos('left');
+          const windowHeight = window.innerHeight;
+          
+          const spaceRight = windowWidth - rect.right;
+          if (spaceRight < 340) {
+              setPreviewSide('left');
           } else {
-              setPreviewPos('right');
+              setPreviewSide('right');
           }
+
+          const PREVIEW_HEIGHT = 450;
+          const spaceBelow = windowHeight - rect.top;
+          
+          if (spaceBelow < PREVIEW_HEIGHT && rect.bottom > PREVIEW_HEIGHT) {
+              setPreviewAlign('bottom');
+          } else {
+              setPreviewAlign('top');
+          }
+
           setShowPreview(true);
       }
   };
@@ -230,14 +243,24 @@ export const ListingCard = React.memo<ListingCardProps>(({
             <div className="mt-4 flex gap-2">
                 <button
                     onClick={handleMainAction}
-                    // Owner can always click (Manage). Others disabled if ended/full/sold.
+                    // Owner always enabled. Others disabled if ended/full/sold.
                     disabled={!isOwner && ((isEnded && isAuction) || (isBreak && isBreakFull) || listing.isSold)}
-                    className={`flex-1 flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors
-                        ${isOwner ? 'bg-gray-800 hover:bg-gray-900' 
-                          : (!isOwner && ((isEnded && isAuction) || (isBreak && isBreakFull) || listing.isSold)) ? 'bg-gray-400 cursor-not-allowed' 
-                          : 'bg-primary-600 hover:bg-primary-700'}`}
+                    className={`flex-1 flex items-center justify-center rounded-lg px-3 py-2 text-sm font-bold shadow-sm transition-colors
+                        ${isOwner 
+                            ? 'bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-100' // Distinct Seller Style
+                            : (!isOwner && ((isEnded && isAuction) || (isBreak && isBreakFull) || listing.isSold)) 
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                                : 'bg-primary-600 text-white hover:bg-primary-700 border border-transparent'
+                        }`}
                 >
-                    {isOwner ? getOwnerActionLabel() : (isBreak ? (isBreakFull ? 'Full' : 'Join') : (isEnded || listing.isSold ? 'Closed' : actionLabel))}
+                    {isOwner ? (
+                        <>
+                            <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            {getOwnerActionLabel()}
+                        </>
+                    ) : (
+                        (isBreak ? (isBreakFull ? 'Full' : 'Join') : (isEnded || listing.isSold ? 'Closed' : actionLabel))
+                    )}
                 </button>
             </div>
             
@@ -255,9 +278,10 @@ export const ListingCard = React.memo<ListingCardProps>(({
       {/* Popover Preview */}
       {showPreview && enableHoverPreview && (
           <div 
-            className={`hidden md:block absolute top-0 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-[60] p-5 pointer-events-none transition-all duration-200 ${
-                previewPos === 'right' ? 'left-full ml-3' : 'right-full mr-3'
-            }`}
+            className={`hidden md:block absolute w-80 bg-white rounded-xl shadow-2xl border border-gray-200 z-[60] p-5 pointer-events-none transition-all duration-200 
+                ${previewSide === 'right' ? 'left-full ml-3' : 'right-full mr-3'} 
+                ${previewAlign === 'top' ? 'top-0' : 'bottom-0'}
+            `}
           >
               <h4 className="font-bold text-gray-900 leading-tight mb-1">{listing.title}</h4>
               <p className="text-xs text-gray-500 mb-3">{listing.setName} {listing.setId && `• ${listing.setId.toUpperCase()}`}</p>

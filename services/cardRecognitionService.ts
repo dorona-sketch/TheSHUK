@@ -1,6 +1,6 @@
 
-import { IdentificationResult, CardCandidate, PokemonType, CardCategory, VariantTag } from '../types';
-import { cropImageCorners, binarizeBase64, extractIDStrips, computeDHash, calculateHammingDistance } from '../utils/imageProcessing';
+import { IdentificationResult, CardCandidate, PokemonType, CardCategory, VariantTag, CardTypeTag, CategoryTag } from '../types';
+import { cropImageCorners, binarizeBase64, extractIDStrips, computeDHash, calculateHammingDistance, autoCropCard } from '../utils/imageProcessing';
 import { performOcrOnCorners } from './geminiService';
 import { searchCardByCollectorNumber, getCardPrice, fetchSetChaseCard } from './tcgApiService';
 
@@ -8,10 +8,10 @@ export const CardRecognitionService = {
 
     /**
      * MAIN PIPELINE
-     * 1. Pre-process: Crop corners & Binarize for OCR.
+     * 1. Pre-process: Auto-Crop card from background & Binarize corners for OCR.
      * 2. OCR: Extract ID (e.g. "001/165", "TG13/TG30", "SWSH123").
      * 3. API Lookup: Fetch candidates by ID logic.
-     * 4. Map & Expand Variants: Explode API results into specific variants (Normal, Reverse Holo).
+     * 4. Map & Expand Variants: Explode API results into specific variants (Normal, Reverse Holo) with Pricing.
      * 5. Tie-Break: ROI Strip dHash comparison (BL/BR) if variants ambiguous visually.
      */
     async identify(base64Image: string, mimeType: string = 'image/jpeg'): Promise<IdentificationResult> {
@@ -19,8 +19,10 @@ export const CardRecognitionService = {
         console.time("Total Pipeline Time");
         
         // 1. Image Pre-processing for OCR
-        console.log("Stage 1: Pre-processing Image...");
-        const { leftCorner, rightCorner } = await cropImageCorners(base64Image);
+        console.log("Stage 1: Auto-Cropping & Pre-processing...");
+        const croppedBase64 = await autoCropCard(base64Image); // Use OpenCV crop if available
+        const { leftCorner, rightCorner } = await cropImageCorners(croppedBase64);
+        
         const [binaryLeft, binaryRight] = await Promise.all([
             binarizeBase64(leftCorner),
             binarizeBase64(rightCorner)
@@ -33,33 +35,46 @@ export const CardRecognitionService = {
 
         let candidates: any[] = [];
         // Clean up OCR spacing issues (e.g. "0 5 8 / 1 0 2" -> "058/102")
-        const rawId = (ocrResult.normalized || '').replace(/\s+/g, '');
+        let rawId = (ocrResult.normalized || '').replace(/\s+/g, '').toUpperCase();
 
         // 3. API Lookup Stage (Parsing Logic)
-        if (rawId && ocrResult.confidence > 0.6) {
+        if (rawId && ocrResult.confidence > 0.4) {
             console.log("Stage 3: Parsing ID", rawId);
             
-            // Pattern 1: Standard Fraction (e.g. 058/102)
-            const fractionMatch = rawId.match(/^([A-Z]{0,2})?(\d+)\/([A-Z]{0,2})?(\d+)$/i);
+            // Regex Strategy:
+            // 1. Subsets (TG, GG, SV, RC) - e.g. TG13/TG30, SV1/SV94
+            const subsetMatch = rawId.match(/^([A-Z]{2,3})(\d+)\/([A-Z]{2,3})?(\d+)$/);
             
-            // Pattern 2: Trainer Gallery / Shiny Vault / Galarian Gallery (e.g. TG13/TG30, SV50/SV94, GG01/GG70)
-            const subsetMatch = rawId.match(/^((TG|SV|GG)\d+)\/((TG|SV|GG)\d+)$/i);
+            // 2. Standard Fraction (e.g. 058/102, 5/18)
+            const fractionMatch = rawId.match(/^(\d+)\/(\d+)([A-Z]+)?$/);
+            
+            // 3. Promo / Simple ID (e.g. SWSH123, SVP001)
+            const promoMatch = rawId.match(/^([A-Z]{2,5})[-]?(\d+)$/);
 
-            // Pattern 3: Promo / Simple ID (e.g. SWSH123, 123)
-            const promoMatch = rawId.match(/^([A-Z]{2,5})-?(\d+)$/i);
-
-            if (subsetMatch) {
-                console.log("Matched Subset Pattern:", subsetMatch[1]);
-                candidates = await searchCardByCollectorNumber(subsetMatch[1]);
-            } else if (fractionMatch) {
-                console.log("Matched Fraction Pattern:", { num: fractionMatch[2], total: fractionMatch[4] });
-                candidates = await searchCardByCollectorNumber(fractionMatch[2], fractionMatch[4]);
-            } else if (promoMatch) {
-                console.log("Matched Promo Pattern:", { prefix: promoMatch[1], num: promoMatch[2] });
-                candidates = await searchCardByCollectorNumber(rawId, undefined, promoMatch[1]);
-            } else {
-                console.log("Fallback: Raw String Search");
-                candidates = await searchCardByCollectorNumber(rawId);
+            try {
+                if (subsetMatch) {
+                    // e.g. TG13/TG30 -> Prefix=TG, Num=13
+                    const prefix = subsetMatch[1];
+                    const num = subsetMatch[2];
+                    const fullId = `${prefix}${num}`;
+                    console.log("Matched Subset Pattern:", fullId);
+                    candidates = await searchCardByCollectorNumber(fullId);
+                } else if (fractionMatch) {
+                    // e.g. 058/102 -> Num=058, Total=102
+                    const number = fractionMatch[1];
+                    const total = fractionMatch[2];
+                    console.log("Matched Fraction Pattern:", { number, total });
+                    candidates = await searchCardByCollectorNumber(number, total);
+                } else if (promoMatch) {
+                    // e.g. SWSH123 -> Prefix=SWSH, Num=123
+                    console.log("Matched Promo Pattern:", { prefix: promoMatch[1], num: promoMatch[2] });
+                    candidates = await searchCardByCollectorNumber(rawId, undefined, promoMatch[1]);
+                } else {
+                    console.log("Fallback: Raw String Search");
+                    candidates = await searchCardByCollectorNumber(rawId);
+                }
+            } catch (e) {
+                console.error("API Search Error", e);
             }
         } else {
             console.warn("OCR Confidence too low or ID empty.");
@@ -67,7 +82,7 @@ export const CardRecognitionService = {
 
         console.log(`Stage 3 Complete: Found ${candidates.length} API Candidates (pre-expansion)`);
 
-        // 4. Map & Expand Variants
+        // 4. Map & Expand Variants (Handles Rarity & Pricing)
         let finalCandidates: CardCandidate[] = [];
         candidates.forEach(apiCard => {
             const variants = expandVariants(apiCard);
@@ -77,7 +92,7 @@ export const CardRecognitionService = {
         // 5. Tie-Break Stage (ROI Strip Signature)
         if (finalCandidates.length > 1) {
             console.log("Stage 4: Ambiguous matches detected. Running Visual Tie-Break...");
-            finalCandidates = await this.performVisualTieBreak(`data:${mimeType};base64,${base64Image}`, finalCandidates);
+            finalCandidates = await this.performVisualTieBreak(`data:${mimeType};base64,${croppedBase64}`, finalCandidates);
         } else {
             console.log("Stage 4: Skipped (Single or No candidate)");
         }
@@ -149,7 +164,7 @@ export const CardRecognitionService = {
                 }
             }));
 
-            // 3. Sort by Distance (Ascending) / Similarity (Descending)
+            // 3. Sort by Similarity (Descending)
             scoredCandidates.sort((a, b) => (b.visualSimilarity || 0) - (a.visualSimilarity || 0));
 
             console.table(scoredCandidates.map(c => ({
@@ -178,9 +193,9 @@ export const CardRecognitionService = {
 
         try {
             // Priority: Use the price estimate for the specific variant (e.g. Holo vs Normal)
-            // If not available, fetch from API with variant
             let price = card.priceEstimate || 0;
             
+            // If estimate missing (e.g. newly added variant logic), fetch fresh
             if (!price) {
                 const priceData = await getCardPrice(card.id, card.variant);
                 price = priceData?.market || 0;
@@ -189,9 +204,8 @@ export const CardRecognitionService = {
             const setChase = await fetchSetChaseCard(card.setId);
             
             // Criteria: 
-            // 1. Must be the identified chase card ID of the set.
-            // 2. Must have a value > $20 (Arbitrary 'Chase' threshold for MVP excitement).
-            // 3. Or check if current price > setChase price * 0.9 (approx match)
+            // 1. ID Match: Is this card ID the same as the most expensive card in the set?
+            // 2. Value Threshold: Is it actually valuable? (> $20)
             
             const isIdMatch = setChase && setChase.id === card.id;
             const isHighValue = price > 20;
@@ -210,7 +224,48 @@ export const CardRecognitionService = {
 
 // --- Mappers ---
 
+const deriveTags = (apiCard: any): { cardTypeTag?: CardTypeTag, categoryTag?: CategoryTag, variantTags: VariantTag[] } => {
+    const subtypes = apiCard.subtypes || [];
+    const rarity = (apiCard.rarity || '').toLowerCase();
+    const name = apiCard.name.toLowerCase();
+    
+    let cardTypeTag: CardTypeTag | undefined;
+    let categoryTag: CategoryTag | undefined;
+    const variantTags: VariantTag[] = [];
+
+    // Card Type
+    if (subtypes.includes('VMAX')) cardTypeTag = CardTypeTag.VMAX;
+    else if (subtypes.includes('VSTAR')) cardTypeTag = CardTypeTag.VSTAR;
+    else if (subtypes.includes('V')) cardTypeTag = CardTypeTag.V;
+    else if (subtypes.includes('EX') || name.includes(' ex')) cardTypeTag = CardTypeTag.EX;
+    else if (subtypes.includes('GX')) cardTypeTag = CardTypeTag.GX;
+    else if (subtypes.includes('Radiant')) cardTypeTag = CardTypeTag.RADIANT;
+    else if (subtypes.includes('Stage 2')) cardTypeTag = CardTypeTag.STAGE2;
+    else if (subtypes.includes('Stage 1')) cardTypeTag = CardTypeTag.STAGE1;
+    else if (subtypes.includes('Basic')) cardTypeTag = CardTypeTag.BASIC;
+
+    // Category / Rarity Tag
+    if (rarity.includes('special illustration rare') || rarity === 'sir') categoryTag = CategoryTag.SIR;
+    else if (rarity.includes('illustration rare') || rarity === 'ir') categoryTag = CategoryTag.IR;
+    else if (rarity.includes('hyper rare') || rarity === 'hr') categoryTag = CategoryTag.HR;
+    else if (rarity.includes('ultra rare') || rarity === 'ur') categoryTag = CategoryTag.UR;
+    else if (rarity.includes('secret rare') || rarity === 'sr') categoryTag = CategoryTag.SR;
+    else if (rarity.includes('double rare') || rarity === 'rr') categoryTag = CategoryTag.RR;
+    else if (rarity.includes('character rare')) categoryTag = CategoryTag.CHR;
+    else if (rarity.includes('trainer gallery')) variantTags.push(VariantTag.TRAINER_GALLERY);
+
+    // Variants
+    if (rarity.includes('full art') || subtypes.includes('Full Art')) variantTags.push(VariantTag.FULL_ART);
+    if (name.includes('alt art') || name.includes('alternate art')) variantTags.push(VariantTag.ALT_ART);
+    if (rarity.includes('promo')) variantTags.push(VariantTag.PROMO);
+    if (subtypes.includes('First Edition') || name.includes('1st edition')) variantTags.push(VariantTag.FIRST_EDITION);
+    
+    return { cardTypeTag, categoryTag, variantTags };
+};
+
 const mapApiToCandidate = (apiCard: any): CardCandidate => {
+    const { cardTypeTag, categoryTag, variantTags } = deriveTags(apiCard);
+
     return {
         id: apiCard.id,
         cardName: apiCard.name,
@@ -223,10 +278,15 @@ const mapApiToCandidate = (apiCard: any): CardCandidate => {
         condition: 'Near Mint', 
         confidence: 0.9, 
         imageUrl: apiCard.images?.small,
-        rarity: apiCard.rarity || 'Common', // Enforce rarity fallback
+        rarity: apiCard.rarity || 'Common', 
         matchSource: 'id_lookup',
         pokemonType: apiCard.types?.[0] || 'Colorless',
-        cardCategory: apiCard.supertype === 'Trainer' ? 'Trainer' : 'Pokemon'
+        cardCategory: apiCard.supertype === 'Trainer' ? CardCategory.TRAINER : (apiCard.supertype === 'Energy' ? CardCategory.ENERGY : CardCategory.POKEMON),
+        
+        // New Fields
+        cardTypeTag,
+        categoryTag,
+        variantTags
     };
 };
 
@@ -236,35 +296,42 @@ const expandVariants = (apiCard: any): CardCandidate[] => {
     const prices = apiCard.tcgplayer?.prices;
 
     if (!prices) {
-        // No specific price info, return base with generic variant
         return [{ ...base, variant: base.rarity === 'Common' ? 'Normal' : base.rarity }];
     }
 
-    // Explicitly check for price buckets available in TCGPlayer API
+    // Map API price buckets to user-friendly variant names
     if (prices.normal) {
         variants.push({ ...base, variant: 'Normal', priceEstimate: prices.normal.market });
     }
+    
     if (prices.holofoil) {
-        variants.push({ ...base, variant: 'Holofoil', priceEstimate: prices.holofoil.market });
+        // Special rarities often use 'holofoil' bucket but deserve better names
+        const variantName = base.categoryTag ? base.categoryTag : (base.rarity || 'Holofoil');
+        variants.push({ ...base, variant: variantName, priceEstimate: prices.holofoil.market });
     }
+    
     if (prices.reverseHolofoil) {
         variants.push({ ...base, variant: 'Reverse Holofoil', priceEstimate: prices.reverseHolofoil.market });
     }
+    
     if (prices['1stEditionHolofoil']) {
         variants.push({ ...base, variant: '1st Edition Holo', priceEstimate: prices['1stEditionHolofoil'].market });
     }
+    
     if (prices['1stEdition']) {
         variants.push({ ...base, variant: '1st Edition', priceEstimate: prices['1stEdition'].market });
     }
+    
     if (prices.unlimitedHolofoil) {
         variants.push({ ...base, variant: 'Unlimited Holo', priceEstimate: prices.unlimitedHolofoil.market });
     }
+    
     if (prices.unlimited) {
         variants.push({ ...base, variant: 'Unlimited', priceEstimate: prices.unlimited.market });
     }
 
-    // Fallback: If prices exist but didn't match standard keys (rare), add base
     if (variants.length === 0) {
+        // Fallback if price object exists but specific keys don't match known ones
         variants.push({ ...base, variant: base.rarity, priceEstimate: undefined });
     }
 

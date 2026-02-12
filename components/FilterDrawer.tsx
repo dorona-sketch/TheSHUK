@@ -42,6 +42,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   const [localSort, setLocalSort] = useState<SortOption>(sortOption);
   
   // New Filters
+  const [localPokemonName, setLocalPokemonName] = useState<string>(filters.pokemonName || '');
   const [localLanguage, setLocalLanguage] = useState<string>(filters.language || '');
   const [localSeries, setLocalSeries] = useState<string>(filters.series || '');
   const [localSet, setLocalSet] = useState<string>(filters.set || '');
@@ -62,9 +63,16 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
-  
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionRef = useRef<HTMLDivElement>(null);
+
+  // --- Pokemon Name Autocomplete State ---
+  const [pokeSuggestions, setPokeSuggestions] = useState<string[]>([]);
+  const [showPokeSuggestions, setShowPokeSuggestions] = useState(false);
+  const [activePokeSuggestionIndex, setActivePokeSuggestionIndex] = useState(-1);
+  const pokeInputRef = useRef<HTMLInputElement>(null);
+  const pokeSuggestionRef = useRef<HTMLDivElement>(null);
+
   const drawerRef = useRef<HTMLDivElement>(null);
 
   // Sync local state with global state when drawer opens (Snap to current reality)
@@ -74,6 +82,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalScope(filters.searchScope || SearchScope.ALL);
       setLocalSort(sortOption);
       
+      setLocalPokemonName(filters.pokemonName || '');
       setLocalLanguage(filters.language || '');
       setLocalSeries(filters.series || '');
       setLocalSet(filters.set || '');
@@ -105,7 +114,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       return sets.sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
   }, [availableSets, localSeries]);
 
-  // --- Debounced Suggestions ---
+  // --- Debounced Suggestions (Main Search) ---
   useEffect(() => {
       const timer = setTimeout(() => {
           if (localSearch && localSearch.length > 1) {
@@ -120,12 +129,33 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       return () => clearTimeout(timer);
   }, [localSearch, localScope, getSuggestions]);
 
+  // --- Debounced Suggestions (Pokemon Name) ---
+  useEffect(() => {
+      const timer = setTimeout(() => {
+          if (localPokemonName && localPokemonName.length > 1) {
+              const results = getSuggestions(SearchScope.POKEMON, localPokemonName);
+              setPokeSuggestions(results);
+              setShowPokeSuggestions(results.length > 0);
+          } else {
+              setPokeSuggestions([]);
+              setShowPokeSuggestions(false);
+          }
+      }, 250);
+      return () => clearTimeout(timer);
+  }, [localPokemonName, getSuggestions]);
+
   // Click outside to close suggestions
   useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
+          // Main Search
           if (suggestionRef.current && !suggestionRef.current.contains(event.target as Node) && 
               searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
               setShowSuggestions(false);
+          }
+          // Pokemon Name
+          if (pokeSuggestionRef.current && !pokeSuggestionRef.current.contains(event.target as Node) && 
+              pokeInputRef.current && !pokeInputRef.current.contains(event.target as Node)) {
+              setShowPokeSuggestions(false);
           }
       };
       document.addEventListener('mousedown', handleClickOutside);
@@ -146,24 +176,32 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   }, []);
 
   // --- Keyboard Navigation for Autocomplete ---
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (!showSuggestions) return;
+  const handleKeyDown = (e: React.KeyboardEvent, isPokemonSearch: boolean = false) => {
+      const isShowing = isPokemonSearch ? showPokeSuggestions : showSuggestions;
+      const suggestionsList = isPokemonSearch ? pokeSuggestions : suggestions;
+      const activeIndex = isPokemonSearch ? activePokeSuggestionIndex : activeSuggestionIndex;
+      const setIndex = isPokemonSearch ? setActivePokeSuggestionIndex : setActiveSuggestionIndex;
+      const setShow = isPokemonSearch ? setShowPokeSuggestions : setShowSuggestions;
+      const setVal = isPokemonSearch ? setLocalPokemonName : setLocalSearch;
+
+      if (!isShowing) return;
 
       if (e.key === 'ArrowDown') {
           e.preventDefault();
-          setActiveSuggestionIndex(prev => (prev < suggestions.length - 1 ? prev + 1 : prev));
+          setIndex(prev => (prev < suggestionsList.length - 1 ? prev + 1 : prev));
       } else if (e.key === 'ArrowUp') {
           e.preventDefault();
-          setActiveSuggestionIndex(prev => (prev > 0 ? prev - 1 : -1));
+          setIndex(prev => (prev > 0 ? prev - 1 : -1));
       } else if (e.key === 'Enter') {
           e.preventDefault();
-          if (activeSuggestionIndex >= 0 && activeSuggestionIndex < suggestions.length) {
-              handleSuggestionClick(suggestions[activeSuggestionIndex]);
+          if (activeIndex >= 0 && activeIndex < suggestionsList.length) {
+              setVal(suggestionsList[activeIndex]);
+              setShow(false);
           } else {
-              setShowSuggestions(false);
+              setShow(false);
           }
       } else if (e.key === 'Escape') {
-          setShowSuggestions(false);
+          setShow(false);
       }
   };
 
@@ -176,6 +214,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
     setSortOption(localSort);
     
     // 2. Selectors
+    setFilter('pokemonName', localPokemonName);
     setFilter('language', localLanguage);
     setFilter('series', localSeries);
     setFilter('set', localSet);
@@ -208,6 +247,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalSearch('');
       setLocalScope(SearchScope.ALL);
       setLocalSort(SortOption.NEWEST);
+      setLocalPokemonName('');
       setLocalLanguage('');
       setLocalSeries('');
       setLocalSet('');
@@ -222,16 +262,28 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalPriceMax('');
   };
 
-  const handleSuggestionClick = (value: string) => {
-      setLocalSearch(value);
-      setShowSuggestions(false);
-      searchInputRef.current?.focus();
+  const handleSuggestionClick = (value: string, isPokemonSearch: boolean = false) => {
+      if (isPokemonSearch) {
+          setLocalPokemonName(value);
+          setShowPokeSuggestions(false);
+          pokeInputRef.current?.focus();
+      } else {
+          setLocalSearch(value);
+          setShowSuggestions(false);
+          searchInputRef.current?.focus();
+      }
   };
 
   const clearSearch = () => {
       setLocalSearch('');
       setSuggestions([]);
       searchInputRef.current?.focus();
+  };
+
+  const clearPokemonName = () => {
+      setLocalPokemonName('');
+      setPokeSuggestions([]);
+      pokeInputRef.current?.focus();
   };
 
   const highlightMatch = (text: string, query: string) => {
@@ -303,7 +355,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                     setLocalSearch(e.target.value);
                                     setActiveSuggestionIndex(-1);
                                 }}
-                                onKeyDown={handleKeyDown}
+                                onKeyDown={(e) => handleKeyDown(e, false)}
                                 onFocus={() => {
                                     if (localSearch) setShowSuggestions(true);
                                 }}
@@ -336,7 +388,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                                     key={idx}
                                                     role="option"
                                                     aria-selected={idx === activeSuggestionIndex}
-                                                    onClick={() => handleSuggestionClick(suggestion)}
+                                                    onClick={() => handleSuggestionClick(suggestion, false)}
                                                     className={`px-4 py-3 text-sm cursor-pointer border-b border-gray-50 last:border-0 flex items-center justify-between transition-colors
                                                         ${idx === activeSuggestionIndex ? 'bg-primary-50 text-primary-900' : 'hover:bg-gray-50 text-gray-700'}`}
                                                 >
@@ -369,6 +421,72 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 ))}
                             </select>
                         </div>
+                    </div>
+                </section>
+
+                {/* 0.5. Specific Pokemon Name Filter */}
+                <section className="relative z-10">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Pokémon Name</h3>
+                    <div className="relative group">
+                        <input
+                            ref={pokeInputRef}
+                            type="text"
+                            value={localPokemonName}
+                            onChange={(e) => {
+                                setLocalPokemonName(e.target.value);
+                                setActivePokeSuggestionIndex(-1);
+                            }}
+                            onKeyDown={(e) => handleKeyDown(e, true)}
+                            onFocus={() => {
+                                if (localPokemonName) setShowPokeSuggestions(true);
+                            }}
+                            placeholder="e.g. Charizard"
+                            className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-shadow shadow-sm"
+                            autoComplete="off"
+                            aria-label="Pokemon Name"
+                            aria-haspopup="listbox"
+                            aria-expanded={showPokeSuggestions}
+                        />
+                        {localPokemonName && (
+                            <button
+                                onClick={clearPokemonName}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
+                                aria-label="Clear pokemon name"
+                            >
+                                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                        )}
+
+                        {/* Pokemon Suggestions Dropdown */}
+                        {showPokeSuggestions && (
+                            <div ref={pokeSuggestionRef} className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-60 overflow-y-auto z-50">
+                                {pokeSuggestions.length > 0 ? (
+                                    <ul role="listbox">
+                                        {pokeSuggestions.map((suggestion, idx) => (
+                                            <li 
+                                                key={idx}
+                                                role="option"
+                                                aria-selected={idx === activePokeSuggestionIndex}
+                                                onClick={() => handleSuggestionClick(suggestion, true)}
+                                                className={`px-4 py-3 text-sm cursor-pointer border-b border-gray-50 last:border-0 flex items-center justify-between transition-colors
+                                                    ${idx === activePokeSuggestionIndex ? 'bg-primary-50 text-primary-900' : 'hover:bg-gray-50 text-gray-700'}`}
+                                            >
+                                                <span className="truncate">{highlightMatch(suggestion, localPokemonName)}</span>
+                                                {idx === activePokeSuggestionIndex && (
+                                                    <svg className="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div className="px-4 py-3 text-sm text-gray-400 text-center italic">
+                                        No matches found
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </section>
 

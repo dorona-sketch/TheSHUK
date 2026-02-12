@@ -41,7 +41,7 @@ export const isValidDate = (date: any): boolean => {
 // Returns "Oct 5, 2023, 2:30 PM EDT" - Handles Timezone correctly
 export const formatLocalTime = (date: Date | string | number | undefined | null): string => {
     const d = parseDate(date);
-    if (!d) return 'TBD'; // Changed from 'Invalid Date' to 'TBD' for better UI UX
+    if (!d) return 'TBD'; 
     
     try {
         return d.toLocaleString(undefined, {
@@ -53,7 +53,7 @@ export const formatLocalTime = (date: Date | string | number | undefined | null)
             timeZoneName: 'short' // Critical for live events/auctions
         });
     } catch (e) {
-        return d.toLocaleString();
+        return 'Invalid Date';
     }
 };
 

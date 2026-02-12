@@ -29,6 +29,7 @@ interface FilterState {
   variantTags: VariantTag[];
   breakStatus: BreakStatus[];
   priceRange: { min: number | null; max: number | null };
+  pokemonName: string;
 }
 
 interface StoreContextType {
@@ -135,7 +136,8 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
     cardCategories: [],
     variantTags: [],
     breakStatus: [],
-    priceRange: { min: null, max: null }
+    priceRange: { min: null, max: null },
+    pokemonName: ''
   });
   
   const [sortOption, setSortOption] = useState<SortOption>(SortOption.NEWEST);
@@ -201,6 +203,11 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
         if (appMode !== AppMode.BREAKS && filters.category && l.category !== filters.category) return false;
 
         // 4. Advanced Filters
+        if (filters.pokemonName) {
+            const pName = filters.pokemonName.toLowerCase();
+            if (!l.pokemonName?.toLowerCase().includes(pName)) return false;
+        }
+
         if (filters.series && l.series !== filters.series) return false;
         if (filters.set && l.setId !== filters.set) return false;
         if (filters.language && l.language !== filters.language) return false;
@@ -262,7 +269,8 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
         cardCategories: [],
         variantTags: [],
         breakStatus: [],
-        priceRange: { min: null, max: null }
+        priceRange: { min: null, max: null },
+        pokemonName: ''
     });
   };
 
@@ -282,6 +290,10 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
       return Array.from(candidates);
   };
 
+  // ... (Rest of StoreContext methods: getRecommendedGroups, addListing, etc. - mostly unchanged)
+  // To keep payload small, including only changed parts for XML but ensuring file integrity.
+  // Actually, I need to include the rest of the component to be safe as per instructions.
+  
   const getRecommendedGroups = () => {
       if (!currentUser || !currentUser.interests) return [];
       const recs: { group: Group, reason: string }[] = [];
@@ -343,7 +355,6 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
       const currentHighest = listing.currentBid || 0;
       const startPrice = listing.price || 0;
       
-      // Strict increment logic
       if (currentHighest > 0) {
           if (amount <= currentHighest) {
               return { success: false, message: `Bid must be higher than current bid ($${currentHighest.toLocaleString()})` };
@@ -365,10 +376,8 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
 
       setBids(prev => [newBid, ...prev]);
       
-      // Auction Extension Logic (Popcorn Bidding)
       let newEndsAt = listing.endsAt;
       if (endDate && endDate.getTime() - Date.now() < 120000) {
-          // If less than 2 mins left, extend by 2 mins
           newEndsAt = new Date(Date.now() + 120000); 
       }
 
@@ -379,7 +388,6 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
           endsAt: newEndsAt
       });
 
-      // Notification for previous high bidder
       if (listing.highBidderId && listing.highBidderId !== currentUser.id) {
           const outbidNotif: Notification = {
               id: `n_outbid_${Date.now()}`,
@@ -403,124 +411,151 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
       return { success: true, message: 'Item purchased!' };
   };
 
-  // --- Breaks Logic ---
+  // --- Breaks Logic (FIXED) ---
   const joinBreak = async (listingId: string) => {
       if (!currentUser) return { success: false, message: 'Please login to join.' };
       
       // Simulate network processing
       await new Promise(r => setTimeout(r, 600));
 
-      // Check max entries per user first (requires current entries state)
+      const existingListing = listings.find(l => l.id === listingId);
+      if (!existingListing) return { success: false, message: 'Listing not found' };
+
+      // Validation
       const currentListingEntries = breakEntries.filter(e => e.listingId === listingId && e.status !== BreakEntryStatus.CANCELLED);
       const userEntries = currentListingEntries.filter(e => e.userId === currentUser.id);
-      const targetListingRaw = listings.find(l => l.id === listingId);
-      
-      if (targetListingRaw && targetListingRaw.maxEntriesPerUser && userEntries.length >= targetListingRaw.maxEntriesPerUser) {
-          return { success: false, message: `Max entries (${targetListingRaw.maxEntriesPerUser}) reached per user.` };
+
+      if (existingListing.closesAt) {
+          const closeDate = new Date(existingListing.closesAt);
+          if (new Date() > closeDate) return { success: false, message: 'Break entry period has ended.' };
       }
 
-      let joinResult = { success: false, message: '', updatedListing: null as Listing | null };
-
-      // Atomic Update simulation to prevent overfilling
-      setListings(prev => {
-          const newListings = [...prev];
-          const idx = newListings.findIndex(l => l.id === listingId);
-          
-          if (idx === -1) {
-              joinResult = { success: false, message: 'Listing not found', updatedListing: null };
-              return prev;
-          }
-
-          const l = newListings[idx];
-
-          if (l.type !== ListingType.TIMED_BREAK) {
-              joinResult = { success: false, message: 'Not a break listing', updatedListing: null };
-              return prev;
-          }
-          if (l.breakStatus !== BreakStatus.OPEN) {
-              joinResult = { success: false, message: 'Break is not open', updatedListing: null };
-              return prev;
-          }
-          if (l.sellerId === currentUser.id) {
-              joinResult = { success: false, message: 'Cannot join your own break', updatedListing: null };
-              return prev;
-          }
-
-          const currentCount = l.currentParticipants || 0;
-          const target = l.targetParticipants || 1;
-
-          if (currentCount >= target) {
-              joinResult = { success: false, message: 'Break is already full', updatedListing: null };
-              return prev;
-          }
-
-          // Optimistic update
-          const nextCount = currentCount + 1;
-          let nextStatus: BreakStatus | undefined = l.breakStatus;
-          if (nextCount >= target) {
-              nextStatus = BreakStatus.FULL_PENDING_SCHEDULE;
-          }
-
-          newListings[idx] = {
-              ...l,
-              currentParticipants: nextCount,
-              breakStatus: nextStatus
-          };
-          
-          joinResult = { success: true, message: 'Spot secured', updatedListing: newListings[idx] };
-          return newListings;
-      });
-
-      if (!joinResult.success) {
-          return { success: false, message: joinResult.message };
+      if (existingListing.maxEntriesPerUser && userEntries.length >= existingListing.maxEntriesPerUser) {
+          return { success: false, message: `Max entries (${existingListing.maxEntriesPerUser}) reached per user.` };
       }
 
-      const updatedListing = joinResult.updatedListing;
+      if (existingListing.type !== ListingType.TIMED_BREAK) return { success: false, message: 'Not a break listing' };
+      if (existingListing.breakStatus !== BreakStatus.OPEN) return { success: false, message: 'Break is not open' };
+      if (existingListing.sellerId === currentUser.id) return { success: false, message: 'Cannot join your own break' };
+
+      const currentCount = existingListing.currentParticipants || 0;
+      const target = existingListing.targetParticipants || 1;
+
+      if (currentCount >= target) return { success: false, message: 'Break is already full' };
+
+      // Calculate Next State
+      const nextCount = currentCount + 1;
+      let nextStatus = existingListing.breakStatus;
+      if (nextCount >= target) {
+          nextStatus = BreakStatus.FULL_PENDING_SCHEDULE;
+      }
+
+      const updatedListing = { 
+          ...existingListing, 
+          currentParticipants: nextCount, 
+          breakStatus: nextStatus 
+      };
+
+      // Atomic State Update
+      setListings(prev => prev.map(l => l.id === listingId ? updatedListing : l));
+
+      // Proceed with Logic using updatedListing state
       const now = new Date();
-      // Authorization Window: 1 Day (Hardened logic)
-      const authWindowMs = 24 * 60 * 60 * 1000; 
+      const authWindowMs = 7 * 24 * 60 * 60 * 1000; 
+      const isFull = updatedListing.breakStatus === BreakStatus.FULL_PENDING_SCHEDULE;
 
-      const entry: BreakEntry = {
+      const newEntry: BreakEntry = {
           id: `be_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
           listingId,
           userId: currentUser.id,
           userName: currentUser.name,
           userAvatar: currentUser.avatar,
           joinedAt: now,
-          status: BreakEntryStatus.AUTHORIZED,
+          status: isFull ? BreakEntryStatus.CHARGED : BreakEntryStatus.AUTHORIZED, // Charge immediately if filling
           authorizedAt: now,
           authorizationExpiresAt: new Date(now.getTime() + authWindowMs),
-          paymentIntentId: `pi_mock_${Date.now()}_auth` // Simulated Auth ID
+          paymentIntentId: `pi_mock_${Date.now()}_auth`,
+          chargedAt: isFull ? now : undefined
       };
 
-      setBreakEntries(prev => [...prev, entry]);
+      let finalEntries = [...breakEntries, newEntry];
+      let finalTransactions = [...transactions];
 
-      // Notifications
-      setNotifications(prev => [{
-          id: `n_join_${Date.now()}`,
-          userId: currentUser.id,
-          type: 'SYSTEM',
-          title: 'Spot Authorized',
-          message: `Payment authorized for ${updatedListing?.title}. You will be charged upon completion.`,
-          isRead: false,
-          createdAt: new Date(),
-          linkTo: listingId
-      }, ...prev]);
+      // CHARGE ON THRESHOLD
+      if (isFull) {
+          // Identify entries to charge (all existing ACTIVE entries + new entry)
+          // We need to upgrade previous AUTHORIZED entries to CHARGED
+          
+          finalEntries = finalEntries.map(e => {
+              if (e.listingId === listingId && e.status !== BreakEntryStatus.CANCELLED) {
+                  return { ...e, status: BreakEntryStatus.CHARGED, chargedAt: now };
+              }
+              return e;
+          });
 
-      if (updatedListing && updatedListing.breakStatus === BreakStatus.FULL_PENDING_SCHEDULE) {
+          // Create Transactions for ALL participants (simulating capture of pre-auth)
+          const participants = finalEntries.filter(e => e.listingId === listingId && e.status === BreakEntryStatus.CHARGED);
+          
+          participants.forEach(e => {
+              // Avoid duplicates if logic runs multiple times (though mock IDs prevent exact dupes)
+              finalTransactions.unshift({
+                  id: `tx_brk_${e.id}_cap_${Date.now()}`,
+                  userId: e.userId,
+                  amount: -updatedListing.price,
+                  type: TransactionType.PURCHASE,
+                  referenceId: e.id,
+                  referenceType: 'BREAK_ENTRY',
+                  balanceAfter: 0, // Mock
+                  createdAt: now,
+                  description: `Break Threshold Met: ${updatedListing.title}`
+              });
+          });
+
+          // Credit Seller
+          const totalRevenue = updatedListing.price * participants.length;
+          finalTransactions.unshift({
+              id: `tx_brk_${listingId}_rev_${Date.now()}`,
+              userId: updatedListing.sellerId,
+              amount: totalRevenue,
+              type: TransactionType.DEPOSIT,
+              referenceId: listingId,
+              referenceType: 'LISTING',
+              balanceAfter: 0,
+              createdAt: now,
+              description: `Break Full Revenue: ${updatedListing.title}`
+          });
+
+          // Notify Seller
           setNotifications(prev => [{
               id: `n_full_${Date.now()}`,
-              userId: updatedListing!.sellerId,
+              userId: updatedListing.sellerId,
               type: 'BREAK_FULL',
-              title: 'Break Filled!',
-              message: `${updatedListing!.title} is full. Please schedule the live stream.`,
+              title: 'Break Filled & Charged!',
+              message: `${updatedListing.title} is full. Payments have been captured. Please schedule the stream.`,
               isRead: false,
               createdAt: new Date(),
               linkTo: listingId
           }, ...prev]);
       }
 
-      return { success: true, message: 'Spot authorized! Hold placed.' };
+      setBreakEntries(finalEntries);
+      setTransactions(finalTransactions);
+
+      // Notification for Buyer
+      setNotifications(prev => [{
+          id: `n_join_${Date.now()}`,
+          userId: currentUser.id,
+          type: 'SYSTEM',
+          title: isFull ? 'Spot Confirmed' : 'Spot Authorized',
+          message: isFull 
+            ? `Break filled! Payment captured for ${updatedListing.title}.` 
+            : `Payment authorized for ${updatedListing.title}. You will be charged when the break fills.`,
+          isRead: false,
+          createdAt: new Date(),
+          linkTo: listingId
+      }, ...prev]);
+
+      return { success: true, message: isFull ? 'Break full! Payment captured.' : 'Spot authorized! Hold placed.' };
   };
 
   const getBreakEntries = (listingId: string) => breakEntries.filter(e => e.listingId === listingId);
@@ -528,7 +563,11 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
   const scheduleBreak = (listingId: string, date: Date, link?: string) => { 
       const listing = listings.find(l => l.id === listingId);
       if (listing && listing.sellerId !== currentUser?.id) return { success: false, message: 'Unauthorized' };
-      if (date < new Date()) return { success: false, message: 'Schedule date must be in the future.' };
+      
+      const now = new Date();
+      if (isNaN(date.getTime()) || date < now) {
+          return { success: false, message: 'Schedule date must be in the future.' };
+      }
 
       updateListing(listingId, { breakStatus: BreakStatus.SCHEDULED, scheduledLiveAt: date, liveLink: link });
       
@@ -541,7 +580,7 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
               userId: uid,
               type: 'SYSTEM' as const,
               title: 'Break Scheduled!',
-              message: `${listing?.title} is scheduled for ${date.toLocaleString()}.`,
+              message: `${listing?.title} is confirmed for ${date.toLocaleString()}. Get ready!`,
               isRead: false,
               createdAt: new Date(),
               linkTo: listingId
@@ -556,7 +595,7 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
       const listing = listings.find(l => l.id === listingId);
       if (listing && listing.sellerId !== currentUser?.id) return { success: false, message: 'Unauthorized' };
 
-      updateListing(listingId, { breakStatus: BreakStatus.LIVE });
+      updateListing(listingId, { breakStatus: BreakStatus.LIVE, liveStartedAt: new Date() });
       
       const participants = breakEntries.filter(e => e.listingId === listingId && e.status !== BreakEntryStatus.CANCELLED);
       const uniqueUserIds = Array.from(new Set(participants.map(e => e.userId)));
@@ -583,64 +622,18 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
       if (!listing) return { success: false, message: 'Listing not found' };
       if (listing.sellerId !== currentUser?.id) return { success: false, message: 'Unauthorized' };
 
-      updateListing(listingId, { breakStatus: BreakStatus.COMPLETED, resultsMedia: media, resultsNotes: notes });
+      updateListing(listingId, { breakStatus: BreakStatus.COMPLETED, resultsMedia: media, resultsNotes: notes, liveEndedAt: new Date() });
       
-      const participants = breakEntries.filter(e => e.listingId === listingId && e.status === BreakEntryStatus.AUTHORIZED);
-      const now = new Date();
-
-      // Capture authorized payments
-      setBreakEntries(prev => prev.map(e => {
-          if (e.listingId === listingId && e.status === BreakEntryStatus.AUTHORIZED) {
-              // Note: In real logic, we'd check if e.authorizationExpiresAt > now
-              return { ...e, status: BreakEntryStatus.CHARGED, chargedAt: now };
-          }
-          return e;
-      }));
-
-      const newTransactions: WalletTransaction[] = [];
-      participants.forEach(entry => {
-          newTransactions.push({
-              id: `tx_brk_${entry.id}_dr`,
-              userId: entry.userId,
-              amount: -listing.price, 
-              type: TransactionType.PURCHASE,
-              referenceId: entry.id,
-              referenceType: 'BREAK_ENTRY',
-              balanceAfter: 0,
-              createdAt: now,
-              description: `Break Entry: ${listing.title}`
-          });
-      });
-
-      const totalRevenue = listing.price * participants.length;
-      if (totalRevenue > 0) {
-          newTransactions.push({
-              id: `tx_brk_${listing.id}_cr`,
-              userId: listing.sellerId,
-              amount: totalRevenue,
-              type: TransactionType.DEPOSIT,
-              referenceId: listing.id,
-              referenceType: 'LISTING',
-              balanceAfter: 0,
-              createdAt: now,
-              description: `Break Revenue: ${listing.title}`
-          });
-      }
-
-      setTransactions(prev => [...newTransactions, ...prev]);
-
-      if (currentUser?.id === listing.sellerId) {
-          updateProfile({ walletBalance: currentUser.walletBalance + totalRevenue });
-      }
-
+      const participants = breakEntries.filter(e => e.listingId === listingId && e.status !== BreakEntryStatus.CANCELLED);
       const uniqueUserIds = Array.from(new Set(participants.map(e => e.userId)));
+      
       setNotifications(prev => {
           const newNotifs = uniqueUserIds.map(uid => ({
               id: `n_done_${Date.now()}_${uid}`,
               userId: uid,
               type: 'BREAK_COMPLETED' as const,
               title: 'Break Completed',
-              message: `Results for ${listing.title} are posted. Payment captured.`,
+              message: `Results for ${listing.title} are posted.`,
               isRead: false,
               createdAt: new Date(),
               linkTo: listingId
@@ -648,7 +641,8 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
           return [...newNotifs, ...prev];
       });
 
-      return { success: true, message: 'Break completed. Payments captured.' };
+      // Note: Payment capture was done on Threshold (joinBreak), so we don't do it here.
+      return { success: true, message: 'Break completed. Results posted.' };
   };
 
   const cancelBreak = (listingId: string) => { 
@@ -657,24 +651,64 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
 
       updateListing(listingId, { breakStatus: BreakStatus.CANCELLED });
       
-      // Void Authorizations
+      const participants = breakEntries.filter(e => e.listingId === listingId && e.status !== BreakEntryStatus.CANCELLED);
+      const now = new Date();
+      let refundTransactions: WalletTransaction[] = [];
+
+      // Refund / Void Logic
       setBreakEntries(prev => prev.map(e => {
           if (e.listingId === listingId && e.status !== BreakEntryStatus.CANCELLED) {
+              // If previously charged (Charge-on-Threshold), we issue a refund
+              if (e.status === BreakEntryStatus.CHARGED) {
+                  refundTransactions.push({
+                      id: `tx_ref_${e.id}`,
+                      userId: e.userId,
+                      amount: listing.price, // Credit positive
+                      type: TransactionType.REFUND,
+                      referenceId: e.id,
+                      referenceType: 'BREAK_ENTRY',
+                      balanceAfter: 0,
+                      createdAt: now,
+                      description: `Refund: ${listing.title} Cancelled`
+                  });
+              }
+              // If only Authorized, we just Cancel (Void)
               return { ...e, status: BreakEntryStatus.CANCELLED };
           }
           return e;
       }));
 
-      const participants = breakEntries.filter(e => e.listingId === listingId);
-      const uniqueUserIds = Array.from(new Set(participants.map(e => e.userId)));
+      // Revert Seller Revenue if applicable
+      const wasCharged = participants.some(e => e.status === BreakEntryStatus.CHARGED);
+      if (wasCharged) {
+           const totalRevenue = listing.price * participants.length;
+           refundTransactions.push({
+                id: `tx_rev_revert_${listing.id}`,
+                userId: listing.sellerId,
+                amount: -totalRevenue, // Debit negative
+                type: TransactionType.WITHDRAWAL, // Adjustment
+                referenceId: listing.id,
+                referenceType: 'LISTING',
+                balanceAfter: 0,
+                createdAt: now,
+                description: `Revenue Reversal: ${listing.title} Cancelled`
+           });
+           
+           if (currentUser?.id === listing.sellerId) {
+                updateProfile({ walletBalance: currentUser.walletBalance - totalRevenue });
+           }
+      }
 
+      setTransactions(prev => [...refundTransactions, ...prev]);
+
+      const uniqueUserIds = Array.from(new Set(participants.map(e => e.userId)));
       setNotifications(prev => {
           const newNotifs = uniqueUserIds.map(uid => ({
               id: `n_cancel_${Date.now()}_${uid}`,
               userId: uid,
               type: 'BREAK_CANCELLED' as const,
               title: 'Break Cancelled',
-              message: `${listing?.title} was cancelled. Authorizations voided.`,
+              message: `${listing?.title} was cancelled. ${wasCharged ? 'Refunds have been issued.' : 'Authorizations voided.'}`,
               isRead: false,
               createdAt: new Date(),
               linkTo: listingId
@@ -682,19 +716,59 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
           return [...newNotifs, ...prev];
       });
 
-      return { success: true, message: 'Break cancelled. Holds released.' };
+      return { success: true, message: 'Break cancelled. Refunds/Voids processed.' };
   };
 
   const removeBreakEntry = async (entryId: string) => { 
+      if (!currentUser) return { success: false, message: 'Login required' };
+      
       const entry = breakEntries.find(e => e.id === entryId);
       if (!entry) return { success: false, message: 'Entry not found' };
+      
       const listing = listings.find(l => l.id === entry.listingId);
-      if (listing && listing.sellerId !== currentUser?.id) return { success: false, message: 'Unauthorized' };
+      if (!listing) return { success: false, message: 'Listing not found' };
 
-      // Mark as Cancelled instead of deleting to keep record
+      const isSeller = listing.sellerId === currentUser.id;
+      const isParticipant = entry.userId === currentUser.id;
+
+      if (!isSeller && !isParticipant) return { success: false, message: 'Unauthorized' };
+
+      if (isParticipant && !isSeller) {
+          if (listing.breakStatus === BreakStatus.LIVE || listing.breakStatus === BreakStatus.COMPLETED || listing.breakStatus === BreakStatus.CANCELLED) {
+              return { success: false, message: 'Cannot leave an active, completed, or cancelled break.' };
+          }
+      }
+
+      // If already charged, issue refund
+      if (entry.status === BreakEntryStatus.CHARGED) {
+          setTransactions(prev => [{
+              id: `tx_ref_${entry.id}`,
+              userId: entry.userId,
+              amount: listing.price,
+              type: TransactionType.REFUND,
+              referenceId: entry.id,
+              referenceType: 'BREAK_ENTRY',
+              balanceAfter: 0,
+              createdAt: new Date(),
+              description: `Refund: Left Break ${listing.title}`
+          }, ...prev]);
+          
+          // Revert seller revenue for this spot
+          setTransactions(prev => [{
+                id: `tx_rev_adj_${entry.id}`,
+                userId: listing.sellerId,
+                amount: -listing.price,
+                type: TransactionType.WITHDRAWAL,
+                referenceId: listing.id,
+                referenceType: 'LISTING',
+                balanceAfter: 0,
+                createdAt: new Date(),
+                description: `Revenue Adj: User Left ${listing.title}`
+           }, ...prev]);
+      }
+
       setBreakEntries(prev => prev.map(e => e.id === entryId ? { ...e, status: BreakEntryStatus.CANCELLED } : e));
       
-      // Decrement participant count
       setListings(prev => prev.map(l => {
           if (l.id === entry.listingId && (l.currentParticipants || 0) > 0) {
               let newStatus: BreakStatus | undefined = l.breakStatus;
@@ -706,7 +780,7 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
           return l;
       }));
 
-      return { success: true, message: 'Removed participant. Spot opened.' };
+      return { success: true, message: isSeller ? 'Removed participant. Spot opened.' : 'You have left the break.' };
   };
   
   const getLiveEvents = (listingId: string) => {
@@ -733,6 +807,11 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
 
   const joinWaitlist = async (listingId: string) => {
       if (!currentUser) return { success: false, message: 'Login required' };
+      
+      if (waitlist.some(w => w.listingId === listingId && w.userId === currentUser.id)) {
+          return { success: false, message: 'Already on waitlist' };
+      }
+
       setWaitlist(prev => [...prev, {
           id: `w_${Date.now()}`,
           listingId,
@@ -741,7 +820,7 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
           userAvatar: currentUser.avatar,
           joinedAt: new Date()
       }]);
-      return { success: true, message: 'Joined waitlist.' };
+      return { success: true, message: 'Joined waitlist. We will notify you if a spot opens.' };
   };
 
   const getBidsByListingId = (listingId: string) => {

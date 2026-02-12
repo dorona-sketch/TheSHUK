@@ -180,6 +180,37 @@ export enum CardCategory {
   ENERGY = 'Energy'
 }
 
+// New: Detailed Identification Tags
+export enum CardTypeTag {
+    V = 'V',
+    VMAX = 'VMAX',
+    VSTAR = 'VSTAR',
+    EX = 'EX',
+    GX = 'GX',
+    RADIANT = 'Radiant',
+    TRAINER_GALLERY = 'TG',
+    BASIC = 'Basic',
+    STAGE1 = 'Stage 1',
+    STAGE2 = 'Stage 2',
+    LEGEND = 'LEGEND',
+    BREAK = 'BREAK',
+    PRISM = 'Prism Star'
+}
+
+export enum CategoryTag {
+    SAR = 'SAR', // Special Art Rare
+    AR = 'AR',   // Art Rare
+    SR = 'SR',   // Secret Rare
+    UR = 'UR',   // Ultra Rare
+    IR = 'IR',   // Illustration Rare
+    SIR = 'SIR', // Special Illustration Rare
+    HR = 'HR',   // Hyper Rare
+    RR = 'RR',   // Double Rare
+    RRR = 'RRR', // Triple Rare
+    CHR = 'CHR', // Character Rare
+    CSR = 'CSR'  // Character Super Rare
+}
+
 export enum VariantTag {
   FULL_ART = 'Full Art',
   ALT_ART = 'Alt Art', // Previously implied, now explicit
@@ -231,14 +262,14 @@ export interface Listing {
   title: string;
   description: string;
   imageUrl: string;
+  originalImageUrl?: string; // Store raw upload
   sellerId: string;
   sellerName: string;
-  sellerLocation?: string; // New: Seller Location
-  // Denormalized Seller Data for display
+  sellerLocation?: string; 
   sellerAvatar?: string;
   sellerVerified?: boolean;
   
-  price: number; // For Breaks, this is the Entry Price
+  price: number; 
   currentBid: number; 
   bidsCount: number; 
   highBidderId?: string; 
@@ -255,7 +286,7 @@ export interface Listing {
   createdAt: Date;
   endsAt?: Date; 
   reservePrice?: number; 
-  isSold?: boolean; // New: track if auction ended or item bought
+  isSold?: boolean; 
   
   // Metadata for Filters
   setId?: string;
@@ -263,7 +294,13 @@ export interface Listing {
   series?: string; 
   releaseDate?: string;
 
-  // Rich Metadata
+  // Rich Metadata & Catalog Links
+  tcgCardId?: string; // NEW: TCG API ID
+  collectorNumber?: string; // NEW: "001/165"
+  rarity?: string; // NEW: Explicit Rarity String
+  cardTypeTag?: CardTypeTag; // NEW
+  categoryTag?: CategoryTag; // NEW
+
   pokemonName?: string; 
   pokemonType?: PokemonType; 
   cardCategory?: CardCategory; 
@@ -274,11 +311,11 @@ export interface Listing {
   targetParticipants?: number;
   currentParticipants?: number;
   minPrizeDesc?: string;
-  breakContentImages?: string[]; // URLs of possible hits or boxes
+  breakContentImages?: string[]; 
   scheduledLiveAt?: Date;
   
   // Advanced Break Setup
-  boosterName?: string; // Deprecated in UI, kept for compatibility, replaced by OpenedProduct
+  boosterName?: string; 
   openedProduct?: OpenedProduct;
   
   openDurationHours?: number;
@@ -289,19 +326,16 @@ export interface Listing {
   valuation?: Valuation;
   maxEntriesPerUser?: number;
   
-  // Live Session
-  liveLink?: string; // URL for the stream (Twitch/YouTube)
+  liveLink?: string; 
   liveStartedAt?: Date;
   liveEndedAt?: Date;
   
-  // Fairness
-  seedCommitment?: string; // Hash
-  seed?: string; // Revealed at end
+  seedCommitment?: string; 
+  seed?: string; 
 
-  // Break Results
   resultsMedia?: string[];
   resultsNotes?: string;
-  recognizedItemsLog?: any[]; // For debugging/history
+  recognizedItemsLog?: any[]; 
 }
 
 export interface BreakEntry {
@@ -311,12 +345,11 @@ export interface BreakEntry {
   userName: string;
   userAvatar?: string;
   joinedAt: Date;
-  // Payment & Status
   status: BreakEntryStatus;
   authorizedAt?: Date;
   authorizationExpiresAt?: Date;
   chargedAt?: Date;
-  paymentIntentId?: string; // Link to payment
+  paymentIntentId?: string; 
 }
 
 export interface WaitlistEntry {
@@ -330,47 +363,50 @@ export interface WaitlistEntry {
 
 export interface User {
   id: string;
-  name: string;
+  name: string; // Login/System Name
   email: string;
   role: 'BUYER' | 'SELLER';
   walletBalance: number;
   
-  // New/Enhanced Fields
-  displayName?: string;
-  avatarUrl?: string; // Preferred avatar
-  coverImageUrl?: string; // Preferred cover
-  
-  // Backward compatibility (optional but kept for safety)
-  avatar?: string;
-  coverImage?: string;
-
+  // Profile Fields
+  displayName?: string; // Public Display Name
+  avatarUrl?: string; 
+  coverImageUrl?: string; 
   bio?: string;
   location?: string;
   isLocationVerified?: boolean;
-  isEmailVerified?: boolean;
-  isVerifiedSeller?: boolean;
   
+  // Status Fields
+  isEmailVerified?: boolean;
+  isVerifiedSeller?: boolean; // Trusted Seller Status
+  
+  // Account Metadata
   joinedAt: Date;
   preferredAppMode?: AppMode;
 
+  // Moderation
   suspensionReason?: string;
   suspensionUntil?: Date;
   
-  // Community & Granularity
+  // Community
   joinedGroupIds?: string[];
   interests?: {
-      pokemon?: string[]; // e.g. ["Charizard", "Gengar"]
-      sets?: string[];    // e.g. ["151", "Evolving Skies"]
+      pokemon?: string[]; 
+      sets?: string[];    
       types?: PokemonType[];
   };
 
-  // Socials
+  // Social
   socialLinks?: {
     twitter?: string;
     instagram?: string;
     discord?: string;
     youtube?: string;
   };
+
+  // Deprecated / Compat fields (to avoid breaking existing constants/mocks)
+  avatar?: string;
+  coverImage?: string;
 }
 
 export interface Notification {
@@ -379,7 +415,7 @@ export interface Notification {
     type: 'SYSTEM' | 'SALE' | 'BID_WON' | 'BREAK_FULL' | 'BREAK_LIVE' | 'BREAK_EXPIRED' | 'BREAK_COMPLETED' | 'BREAK_CANCELLED' | 'WAITLIST_JOINED' | 'WAITLIST_PROMOTED';
     title: string;
     message: string;
-    linkTo?: string; // listing ID or route
+    linkTo?: string; 
     isRead: boolean;
     createdAt: Date;
 }
@@ -393,12 +429,11 @@ export interface Group {
   type: GroupType;
   name: string;
   description: string;
-  tags: string[]; // e.g. ['Charizard', 'Fire']
+  tags: string[]; 
   icon?: string;
   memberCount: number;
   createdAt: Date;
   lastActivityAt: Date;
-  // Matching rules for recommendations
   matchRules?: {
       pokemonNames?: string[];
       setNames?: string[];
@@ -415,7 +450,7 @@ export interface Thread {
   title: string;
   body: string;
   images?: string[];
-  linkedEntityId?: string; // Link to a listing ID
+  linkedEntityId?: string; 
   linkedEntityType?: 'LISTING' | 'BREAK';
   createdAt: Date;
   updatedAt: Date;
@@ -436,7 +471,6 @@ export interface Comment {
   upvotes: number;
 }
 
-// TCG API Types
 export interface TcgSet {
   id: string;
   name: string;
@@ -449,7 +483,6 @@ export interface TcgSet {
   }
 }
 
-// Chat Types
 export enum MessageStatus {
   SENT = 'SENT',
   DELIVERED = 'DELIVERED',
@@ -504,7 +537,7 @@ export interface Bid {
   bidderName: string;
   amount: number;
   createdAt: Date;
-  paymentIntentId?: string; // Link to payment
+  paymentIntentId?: string; 
 }
 
 // --- Identification Types ---
@@ -535,9 +568,13 @@ export interface CardCandidate {
   pokemonType?: string;
   cardCategory?: string;
   variantTags?: string[];
-  rarity: string; // Enforce Rarity presence (e.g. "Rare Holo")
-  isChase?: boolean; // Flag for special animation
+  rarity: string; 
+  isChase?: boolean; 
   
+  // New Auto-Fill Fields
+  cardTypeTag?: CardTypeTag;
+  categoryTag?: CategoryTag;
+
   // Variants (Reverse Holo, etc)
   variant?: string;
   priceEstimate?: number;

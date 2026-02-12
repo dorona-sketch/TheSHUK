@@ -42,13 +42,25 @@ export const valuationService: PriceProvider = {
 export const estimateOpenedProductValue = (type: string, setId: string, quantity: number): number => {
     // Mock baseline values for products (since public API doesn't provide sealed product prices easily)
     let base = 0;
+    
+    // Heuristics based on product type
     switch(type) {
         case 'ETB': base = 45; break;
         case 'Booster Box': base = 120; break;
         case 'Single Packs': base = 4.5; break;
+        case 'Booster Bundle': base = 25; break;
         case 'Collection Box': base = 30; break;
+        case 'UPC': base = 100; break;
+        case 'Tin': base = 20; break;
         case 'Other': base = 20; break;
         default: base = 10;
     }
+
+    // Heuristics for older sets (Vintage/Mid-era multiplier)
+    const vintagePrefixes = ['base', 'gym', 'neo', 'ex', 'dp', 'bw', 'xy'];
+    if (vintagePrefixes.some(p => setId.startsWith(p))) {
+        base *= 3; // Rough multiplier for vintage sealed
+    }
+
     return base * quantity;
 };

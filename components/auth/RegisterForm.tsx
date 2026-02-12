@@ -57,30 +57,24 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSuccess, onSwitchT
 
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">I want to...</label>
-                    <div className="grid grid-cols-2 gap-3">
-                        <button
-                            type="button"
+                    <label className="block text-sm font-medium text-gray-700 mb-2">I want to...</label>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div 
                             onClick={() => setRole('BUYER')}
-                            className={`py-2 px-3 rounded-lg text-sm font-bold border transition-all ${
-                                role === 'BUYER' 
-                                ? 'bg-blue-50 border-blue-500 text-blue-700 ring-1 ring-blue-500' 
-                                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                            }`}
+                            className={`cursor-pointer border-2 rounded-xl p-3 text-center transition-all ${role === 'BUYER' ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600' : 'border-gray-200 hover:border-gray-300'}`}
                         >
-                            Buy & Collect
-                        </button>
-                        <button
-                            type="button"
+                            <div className={`text-2xl mb-1 ${role === 'BUYER' ? 'grayscale-0' : 'grayscale'}`}>🛍️</div>
+                            <div className={`font-bold text-sm ${role === 'BUYER' ? 'text-primary-900' : 'text-gray-900'}`}>Buyer</div>
+                            <div className="text-[10px] text-gray-500 leading-tight mt-1">Collect & Bid</div>
+                        </div>
+                        <div 
                             onClick={() => setRole('SELLER')}
-                            className={`py-2 px-3 rounded-lg text-sm font-bold border transition-all ${
-                                role === 'SELLER' 
-                                ? 'bg-orange-50 border-orange-500 text-orange-700 ring-1 ring-orange-500' 
-                                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                            }`}
+                            className={`cursor-pointer border-2 rounded-xl p-3 text-center transition-all ${role === 'SELLER' ? 'border-orange-500 bg-orange-50 ring-1 ring-orange-500' : 'border-gray-200 hover:border-gray-300'}`}
                         >
-                            Sell Items
-                        </button>
+                            <div className={`text-2xl mb-1 ${role === 'SELLER' ? 'grayscale-0' : 'grayscale'}`}>💼</div>
+                            <div className={`font-bold text-sm ${role === 'SELLER' ? 'text-orange-900' : 'text-gray-900'}`}>Seller</div>
+                            <div className="text-[10px] text-gray-500 leading-tight mt-1">List & Break</div>
+                        </div>
                     </div>
                 </div>
 

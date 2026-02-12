@@ -19,14 +19,15 @@ export const LiveOverlay: React.FC<LiveOverlayProps> = ({ event }) => {
             if (event.type === LiveEventType.WHEEL_SPIN) {
                 setWheelRotation(0);
                 setTimeout(() => {
-                    const spins = 8; // More spins for drama
+                    const spins = 8;
                     const randomOffset = Math.random() * 360; 
                     setWheelRotation(360 * spins + randomOffset);
                 }, 100);
             }
 
             let duration = 5000;
-            if (event.type === LiveEventType.CARD_REVEAL && event.payload.isChase) duration = 8000;
+            // Safe access to payload properties
+            if (event.type === LiveEventType.CARD_REVEAL && event.payload?.isChase) duration = 8000;
             if (event.type === LiveEventType.WHEEL_SPIN) duration = 7000; 
 
             const timer = setTimeout(() => {
@@ -42,7 +43,7 @@ export const LiveOverlay: React.FC<LiveOverlayProps> = ({ event }) => {
         }
     }, [event]);
 
-    if (!displayEvent || animationState === 'IDLE') return null;
+    if (!displayEvent || animationState === 'IDLE' || !displayEvent.payload) return null;
 
     const containerClass = `absolute inset-x-0 top-[15%] flex justify-center z-30 pointer-events-none px-4 transition-all duration-500 transform ${
         animationState === 'ENTER' ? 'scale-100 opacity-100' : 'scale-90 opacity-0'
@@ -76,14 +77,14 @@ export const LiveOverlay: React.FC<LiveOverlayProps> = ({ event }) => {
             >
                 <div className="text-xs font-bold text-purple-600 uppercase tracking-widest text-center mb-1">Big Winner</div>
                 <div className="text-4xl font-black text-center text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600">
-                    {payload.winner}
+                    {payload.winner || 'Unknown'}
                 </div>
             </div>
         </div>
     );
 
     const renderCardReveal = (payload: any) => {
-        const { cardName, price, isChase, imageUrl } = payload;
+        const { cardName = 'Unknown Card', price = 0, isChase = false, imageUrl } = payload;
         
         if (isChase) {
             return (
@@ -147,26 +148,29 @@ export const LiveOverlay: React.FC<LiveOverlayProps> = ({ event }) => {
         );
     };
 
-    const renderRandomize = (payload: any) => (
-        <div className="bg-gray-900/95 backdrop-blur-md rounded-xl p-6 text-center border border-gray-700 max-w-xs mx-auto shadow-2xl mt-10">
-            <h3 className="text-blue-400 font-bold uppercase tracking-wider text-xs mb-3 flex items-center justify-center gap-2">
-                <span className="animate-spin">🎲</span> Randomized List
-            </h3>
-            <div className="space-y-1.5 relative">
-                {payload.order.slice(0, 5).map((name: string, idx: number) => (
-                    <div key={idx} className="flex items-center gap-3 text-sm animate-fade-in-up bg-gray-800/50 p-1.5 rounded-lg border border-gray-700" style={{ animationDelay: `${idx * 100}ms` }}>
-                        <span className="w-5 h-5 rounded bg-blue-600 flex items-center justify-center text-[10px] font-mono text-white font-bold">{idx + 1}</span>
-                        <span className="text-white font-medium truncate">{name}</span>
-                    </div>
-                ))}
-                {payload.order.length > 5 && (
-                    <div className="text-xs text-gray-500 italic mt-2">
-                        ...and {payload.order.length - 5} others
-                    </div>
-                )}
+    const renderRandomize = (payload: any) => {
+        if (!payload.order) return null;
+        return (
+            <div className="bg-gray-900/95 backdrop-blur-md rounded-xl p-6 text-center border border-gray-700 max-w-xs mx-auto shadow-2xl mt-10">
+                <h3 className="text-blue-400 font-bold uppercase tracking-wider text-xs mb-3 flex items-center justify-center gap-2">
+                    <span className="animate-spin">🎲</span> Randomized List
+                </h3>
+                <div className="space-y-1.5 relative">
+                    {payload.order.slice(0, 5).map((name: string, idx: number) => (
+                        <div key={idx} className="flex items-center gap-3 text-sm animate-fade-in-up bg-gray-800/50 p-1.5 rounded-lg border border-gray-700" style={{ animationDelay: `${idx * 100}ms` }}>
+                            <span className="w-5 h-5 rounded bg-blue-600 flex items-center justify-center text-[10px] font-mono text-white font-bold">{idx + 1}</span>
+                            <span className="text-white font-medium truncate">{name}</span>
+                        </div>
+                    ))}
+                    {payload.order.length > 5 && (
+                        <div className="text-xs text-gray-500 italic mt-2">
+                            ...and {payload.order.length - 5} others
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     const renderGeneric = (type: string, payload: any) => (
         <div className="bg-black/80 backdrop-blur-md text-white px-8 py-4 rounded-full font-bold text-lg text-center shadow-xl mx-auto w-fit border border-white/10 mt-32 animate-bounce-short">

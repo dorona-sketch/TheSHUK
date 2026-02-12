@@ -33,7 +33,81 @@ export const cropImageCorners = async (base64Image: string): Promise<{ leftCorne
             resolve({ leftCorner, rightCorner });
         };
         img.onerror = reject;
-        img.src = `data:image/jpeg;base64,${base64Image}`;
+        img.src = base64Image.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}`;
+    });
+};
+
+/**
+ * Automagically crops the image to the card boundaries using OpenCV.js.
+ * Falls back to original image if OpenCV is not loaded or detection fails.
+ */
+export const autoCropCard = async (base64Image: string): Promise<string> => {
+    return new Promise((resolve) => {
+        // @ts-ignore
+        if (typeof window === 'undefined' || !window.cv) {
+            console.warn("OpenCV not loaded, skipping auto-crop");
+            return resolve(base64Image);
+        }
+
+        const img = new Image();
+        img.onload = () => {
+            try {
+                // @ts-ignore
+                const cv = window.cv;
+                const src = cv.imread(img);
+                const gray = new cv.Mat();
+                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+                
+                const blurred = new cv.Mat();
+                cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+                
+                const edges = new cv.Mat();
+                cv.Canny(blurred, edges, 75, 200);
+                
+                const contours = new cv.MatVector();
+                const hierarchy = new cv.Mat();
+                cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+                let maxArea = 0;
+                let maxContour = null;
+
+                for (let i = 0; i < contours.size(); ++i) {
+                    const cnt = contours.get(i);
+                    const area = cv.contourArea(cnt);
+                    if (area > maxArea) {
+                        maxArea = area;
+                        maxContour = cnt;
+                    }
+                }
+
+                // Threshold: Contour must cover at least 10% of the image to be considered a card
+                if (maxContour && maxArea > (src.cols * src.rows * 0.1)) {
+                    const rect = cv.boundingRect(maxContour);
+                    // Use Region of Interest (ROI) to crop
+                    const dst = src.roi(rect);
+                    
+                    const canvas = document.createElement('canvas');
+                    cv.imshow(canvas, dst);
+                    
+                    // Cleanup
+                    dst.delete();
+                    
+                    // Convert back to base64 (strip prefix)
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                    resolve(dataUrl.split(',')[1]);
+                } else {
+                    resolve(base64Image);
+                }
+
+                // Cleanup memory
+                src.delete(); gray.delete(); blurred.delete(); edges.delete(); contours.delete(); hierarchy.delete();
+            } catch (e) {
+                console.error("OpenCV Crop Failed", e);
+                resolve(base64Image);
+            }
+        };
+        img.onerror = () => resolve(base64Image);
+        img.src = base64Image.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}`;
     });
 };
 
@@ -135,7 +209,7 @@ export const binarizeBase64 = async (base64: string): Promise<string> => {
             resolve(canvas.toDataURL('image/jpeg', 0.8).split(',')[1]);
         };
         img.onerror = () => resolve(base64);
-        img.src = `data:image/jpeg;base64,${base64}`;
+        img.src = base64.startsWith('data:') ? base64 : `data:image/jpeg;base64,${base64}`;
     });
 };
 
@@ -251,99 +325,7 @@ export const calculateHammingDistance = (hash1: string, hash2: string): number =
 
 // --- ORIGINAL HELPERS (Maintained for compatibility) ---
 
-export const computePHash = async (imageUrl: string): Promise<string> => {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.onload = () => {
-            const size = 32; 
-            const canvas = document.createElement('canvas');
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return resolve('');
-
-            ctx.drawImage(img, 0, 0, size, size);
-            const imageData = ctx.getImageData(0, 0, size, size);
-            const data = imageData.data;
-
-            const grays: number[] = [];
-            let sum = 0;
-            for (let i = 0; i < data.length; i += 4) {
-                const avg = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-                grays.push(avg);
-                sum += avg;
-            }
-
-            const mean = sum / grays.length;
-            let hash = '';
-            for (let i = 0; i < grays.length; i++) {
-                hash += (grays[i] >= mean) ? '1' : '0';
-            }
-            resolve(hash);
-        };
-        img.onerror = () => resolve('');
-        img.src = imageUrl;
-    });
-};
-
-export const hammingDistance = (hash1: string, hash2: string): number => {
-    return calculateHammingDistance(hash1, hash2);
-};
-
-export const computeColorHistogram = async (imageUrl: string): Promise<number[]> => {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = "Anonymous";
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = 100;
-            canvas.height = 100;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return resolve([]);
-
-            ctx.drawImage(img, 0, 0, 100, 100);
-            const { data } = ctx.getImageData(0, 0, 100, 100);
-            const bins = new Array(64).fill(0);
-            const totalPixels = data.length / 4;
-
-            for (let i = 0; i < data.length; i += 4) {
-                const r = Math.floor(data[i] / 64);     
-                const g = Math.floor(data[i + 1] / 64); 
-                const b = Math.floor(data[i + 2] / 64); 
-                const binIndex = (r * 16) + (g * 4) + b;
-                bins[binIndex]++;
-            }
-            const normalized = bins.map(count => count / totalPixels);
-            resolve(normalized);
-        };
-        img.onerror = () => resolve([]);
-        img.src = imageUrl;
-    });
-};
-
-export const cosineSimilarity = (vec1: number[], vec2: number[]): number => {
-    if (vec1.length !== vec2.length || vec1.length === 0) return 0;
-    let dotProduct = 0;
-    let mag1 = 0;
-    let mag2 = 0;
-    for (let i = 0; i < vec1.length; i++) {
-        dotProduct += vec1[i] * vec2[i];
-        mag1 += vec1[i] * vec1[i];
-        mag2 += vec2[i] * vec2[i];
-    }
-    mag1 = Math.sqrt(mag1);
-    mag2 = Math.sqrt(mag2);
-    if (mag1 === 0 || mag2 === 0) return 0;
-    return dotProduct / (mag1 * mag2);
-};
-
-interface ProcessImageOptions {
-    targetWidth: number;
-    aspectRatio: number; // width / height
-}
-
-export const processImageUpload = async (file: File, options: ProcessImageOptions): Promise<string> => {
+export const processImageUpload = async (file: File, options: { targetWidth: number; aspectRatio: number }): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -360,7 +342,6 @@ export const processImageUpload = async (file: File, options: ProcessImageOption
                     return;
                 }
                 
-                // Enhance cropping quality
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
 
@@ -378,11 +359,54 @@ export const processImageUpload = async (file: File, options: ProcessImageOption
                 canvas.width = options.targetWidth;
                 canvas.height = options.targetWidth / options.aspectRatio;
                 ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.85); // Increased quality slightly
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.85); 
                 resolve(dataUrl);
             };
             img.onerror = (e) => reject(new Error("Failed to load image"));
         };
         reader.onerror = (e) => reject(e);
+    });
+};
+
+/**
+ * Performs a crop based on the provided quadrilateral points.
+ */
+export const performPerspectiveWarp = async (base64Image: string, points: {x: number, y: number}[]): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                reject(new Error("Canvas context unavailable"));
+                return;
+            }
+
+            const pxPoints = points.map(p => ({
+                x: p.x * img.width,
+                y: p.y * img.height
+            }));
+
+            const minX = Math.min(...pxPoints.map(p => p.x));
+            const minY = Math.min(...pxPoints.map(p => p.y));
+            const maxX = Math.max(...pxPoints.map(p => p.x));
+            const maxY = Math.max(...pxPoints.map(p => p.y));
+            
+            const width = Math.max(1, maxX - minX);
+            const height = Math.max(1, maxY - minY);
+
+            canvas.width = width;
+            canvas.height = height;
+
+            ctx.drawImage(
+                img, 
+                minX, minY, width, height, 
+                0, 0, width, height
+            );
+
+            resolve(canvas.toDataURL('image/jpeg', 0.9).split(',')[1]);
+        };
+        img.onerror = (e) => reject(e);
+        img.src = base64Image.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}`;
     });
 };
