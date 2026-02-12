@@ -1,15 +1,16 @@
+
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { 
     Listing, Bid, Notification, User, AppMode, ListingType, SortOption, 
     SearchScope, BreakStatus, BreakEntryStatus, BreakEntry, LiveEvent, 
     LiveChatMessage, Group, Thread, Comment, WalletTransaction, TransactionType,
     PokemonType, CardCategory, VariantTag, Condition, GradingCompany, SealedProductType,
-    LiveEventType
+    LiveEventType, PaymentIntent, PaymentStatus
 } from '../types';
 import { useAuth } from './AuthContext';
 import { 
     INITIAL_LISTINGS, INITIAL_GROUPS, INITIAL_THREADS, INITIAL_COMMENTS, 
-    MOCK_TRANSACTIONS 
+    MOCK_TRANSACTIONS, MOCK_PAYMENT_INTENTS
 } from '../constants';
 import { parseDate } from '../utils/dateUtils';
 import { fetchTcgSets } from '../services/tcgApiService';
@@ -110,6 +111,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [threads, setThreads] = useState<Thread[]>(INITIAL_THREADS);
     const [comments, setComments] = useState<Comment[]>(INITIAL_COMMENTS);
     const [breakEntries, setBreakEntries] = useState<BreakEntry[]>([]);
+    const [paymentIntents, setPaymentIntents] = useState<PaymentIntent[]>(MOCK_PAYMENT_INTENTS);
     const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
     const [liveChatHistory, setLiveChatHistory] = useState<Record<string, LiveChatMessage[]>>({});
     
@@ -341,38 +343,125 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return { success: true, message: 'Purchase successful!' };
     };
 
+    /**
+     * Join Break Logic:
+     * 1. Check Capacity
+     * 2. Create Authorized Payment Intent (Mock)
+     * 3. Create BreakEntry with expiration
+     * 4. If Full -> Trigger Charge on Threshold Logic
+     */
     const joinBreak = async (listingId: string) => {
         if (!currentUser) return { success: false, message: 'Please login' };
+        
         const listing = listings.find(l => l.id === listingId);
         if (!listing) return { success: false, message: 'Not found' };
         
-        if (listing.currentParticipants && listing.currentParticipants >= (listing.targetParticipants || 0)) {
+        if (listing.breakStatus !== BreakStatus.OPEN) {
+             return { success: false, message: 'Break is not open' };
+        }
+
+        if ((listing.currentParticipants || 0) >= (listing.targetParticipants || 0)) {
             return { success: false, message: 'Break is full' };
         }
 
+        // 1. Create Authorization (Expires in 7 days)
+        const authExpires = new Date();
+        authExpires.setDate(authExpires.getDate() + 7);
+
+        const pi: PaymentIntent = {
+            id: `pi_${Date.now()}_${Math.random().toString(36).substr(2,5)}`,
+            userId: currentUser.id,
+            amount: listing.price,
+            currency: 'USD',
+            status: PaymentStatus.AUTHORIZED,
+            provider: 'MOCK',
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+        setPaymentIntents(prev => [...prev, pi]);
+
+        // 2. Create Entry
         const entry: BreakEntry = {
-            id: `be_${Date.now()}`,
+            id: `be_${Date.now()}_${currentUser.id}`,
             listingId,
             userId: currentUser.id,
             userName: currentUser.displayName || currentUser.name,
             userAvatar: currentUser.avatarUrl,
             joinedAt: new Date(),
-            status: BreakEntryStatus.AUTHORIZED
+            status: BreakEntryStatus.AUTHORIZED,
+            authorizationExpiresAt: authExpires,
+            paymentIntentId: pi.id
         };
+
+        const newCount = (listing.currentParticipants || 0) + 1;
+        const isFull = newCount >= (listing.targetParticipants || 0);
+        let newStatus = listing.breakStatus;
+
+        if (isFull) {
+            newStatus = BreakStatus.FULL_PENDING_SCHEDULE;
+        }
 
         setBreakEntries(prev => [...prev, entry]);
         
-        const newCount = (listing.currentParticipants || 0) + 1;
-        let newStatus = listing.breakStatus;
-        if (newCount >= (listing.targetParticipants || 0)) {
-            newStatus = BreakStatus.FULL_PENDING_SCHEDULE;
+        updateListing(listingId, { 
+            currentParticipants: newCount,
+            breakStatus: newStatus
+        });
+
+        // 3. Charge Logic (Charge-on-Threshold)
+        // If this entry made it full, charge EVERYONE in this break.
+        if (isFull) {
+            // Get all entries including the one just added
+            // Note: State update is async, so we manually combine for the logic here
+            const allBreakEntries = [...breakEntries, entry].filter(e => e.listingId === listingId);
+            
+            const newTransactions: WalletTransaction[] = [];
+            const chargedEntries: BreakEntry[] = [];
+
+            allBreakEntries.forEach(e => {
+                chargedEntries.push({
+                    ...e,
+                    status: BreakEntryStatus.CHARGED,
+                    chargedAt: new Date()
+                });
+
+                // Update PI to Captured
+                setPaymentIntents(prev => prev.map(p => p.id === e.paymentIntentId ? { ...p, status: PaymentStatus.CAPTURED, updatedAt: new Date() } : p));
+
+                // Create Purchase Transaction
+                newTransactions.push({
+                    id: `tx_break_${listingId}_${e.userId}`,
+                    userId: e.userId,
+                    amount: -listing.price,
+                    type: TransactionType.PURCHASE,
+                    description: `Break Entry: ${listing.title}`,
+                    balanceAfter: 0, // In mock, we can't easily calculate others' balance, just assume success
+                    createdAt: new Date(),
+                    referenceId: e.id,
+                    referenceType: 'BREAK_ENTRY'
+                });
+            });
+
+            // Update all entries to CHARGED
+            setBreakEntries(prev => prev.map(e => {
+                const updated = chargedEntries.find(c => c.id === e.id);
+                return updated || e;
+            }));
+
+            setTransactions(prev => [...newTransactions, ...prev]);
+
+            // Update Current User Wallet if they are in the break
+            if (chargedEntries.some(e => e.userId === currentUser.id)) {
+                updateProfile({ walletBalance: currentUser.walletBalance - listing.price });
+            }
+
             // Notify Seller
              const notif: Notification = {
                 id: `n_full_${Date.now()}`,
                 userId: listing.sellerId,
                 type: 'BREAK_FULL',
                 title: 'Break Full!',
-                message: `${listing.title} is ready to schedule.`,
+                message: `${listing.title} is sold out and ready to schedule.`,
                 isRead: false,
                 createdAt: new Date(),
                 linkTo: listing.id
@@ -380,29 +469,70 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setNotifications(prev => [notif, ...prev]);
         }
 
-        updateListing(listingId, { 
-            currentParticipants: newCount,
-            breakStatus: newStatus
-        });
-
-        return { success: true, message: 'Joined break successfully!' };
+        return { success: true, message: isFull ? 'Joined! Break full, payment captured.' : 'Joined! Authorization hold placed.' };
     };
 
     const getBreakEntries = (listingId: string) => breakEntries.filter(e => e.listingId === listingId);
     
+    /**
+     * Handle participant removal.
+     * If they were CHARGED, process REFUND.
+     * If AUTHORIZED, VOID authorization.
+     */
     const removeBreakEntry = async (entryId: string) => {
         const entry = breakEntries.find(e => e.id === entryId);
         if (!entry) return { success: false, message: 'Entry not found' };
         
-        setBreakEntries(prev => prev.filter(e => e.id !== entryId));
         const listing = listings.find(l => l.id === entry.listingId);
+        
+        // Remove from list
+        setBreakEntries(prev => prev.filter(e => e.id !== entryId));
+        
         if (listing) {
+            // Update listing counts and status
+            const newCount = Math.max(0, (listing.currentParticipants || 1) - 1);
+            let newStatus = listing.breakStatus;
+            
+            // If it was full, re-open it
+            if (listing.breakStatus === BreakStatus.FULL_PENDING_SCHEDULE) {
+                newStatus = BreakStatus.OPEN;
+            }
+
             updateListing(listing.id, {
-                currentParticipants: (listing.currentParticipants || 1) - 1,
-                breakStatus: BreakStatus.OPEN // Reopen if it was full
+                currentParticipants: newCount,
+                breakStatus: newStatus
             });
         }
-        return { success: true, message: 'Removed' };
+
+        // Financial Logic
+        if (entry.status === BreakEntryStatus.AUTHORIZED) {
+            // Void
+            setPaymentIntents(prev => prev.map(p => p.id === entry.paymentIntentId ? { ...p, status: PaymentStatus.FAILED, metadata: { reason: 'Voided' } } : p));
+        } else if (entry.status === BreakEntryStatus.CHARGED) {
+            // Refund
+            const listingPrice = listing?.price || 0;
+            
+            setPaymentIntents(prev => prev.map(p => p.id === entry.paymentIntentId ? { ...p, status: PaymentStatus.REFUNDED } : p));
+            
+            const refundTx: WalletTransaction = {
+                id: `tx_ref_${entry.id}`,
+                userId: entry.userId,
+                amount: listingPrice,
+                type: TransactionType.REFUND,
+                description: `Refund: ${listing?.title || 'Break Entry'}`,
+                balanceAfter: 0, 
+                createdAt: new Date(),
+                referenceId: entry.id,
+                referenceType: 'BREAK_ENTRY'
+            };
+            setTransactions(prev => [refundTx, ...prev]);
+
+            if (currentUser && currentUser.id === entry.userId) {
+                updateProfile({ walletBalance: currentUser.walletBalance + listingPrice });
+            }
+        }
+
+        return { success: true, message: 'Removed (Refunded/Voided)' };
     };
 
     const scheduleBreak = (listingId: string, date: Date, link: string) => {
@@ -418,7 +548,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
              const notif: Notification = {
                 id: `n_sched_${Date.now()}_${e.userId}`,
                 userId: e.userId,
-                type: 'BREAK_LIVE', // Approximate type
+                type: 'BREAK_LIVE', // Approximate
                 title: 'Break Scheduled',
                 message: `Your break has been scheduled for ${date.toLocaleString()}.`,
                 isRead: false,
@@ -434,6 +564,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const startBreak = (listingId: string) => {
         updateListing(listingId, { breakStatus: BreakStatus.LIVE, liveStartedAt: new Date() });
         publishLiveEvent(listingId, LiveEventType.BREAK_START, { message: "The break has started!" });
+        
+        // Notify participants
+        const entries = getBreakEntries(listingId);
+        entries.forEach(e => {
+             const notif: Notification = {
+                id: `n_live_${Date.now()}_${e.userId}`,
+                userId: e.userId,
+                type: 'BREAK_LIVE',
+                title: 'Break is LIVE!',
+                message: `Join the stream now!`,
+                isRead: false,
+                createdAt: new Date(),
+                linkTo: listingId
+            };
+            setNotifications(prev => [notif, ...prev]);
+        });
     };
 
     const completeBreak = (listingId: string, media: string[], notes: string) => {
@@ -444,16 +590,65 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             resultsNotes: notes
         });
         
-        // Charge participants logic (Mock)
-        const entries = getBreakEntries(listingId);
-        setBreakEntries(prev => prev.map(e => e.listingId === listingId ? { ...e, status: BreakEntryStatus.CHARGED } : e));
-        
         publishLiveEvent(listingId, LiveEventType.BREAK_END, { message: "Break completed." });
     };
 
     const cancelBreak = (listingId: string) => {
         updateListing(listingId, { breakStatus: BreakStatus.CANCELLED });
-        setBreakEntries(prev => prev.map(e => e.listingId === listingId ? { ...e, status: BreakEntryStatus.CANCELLED } : e));
+        
+        // Process Bulk Refunds
+        const entries = breakEntries.filter(e => e.listingId === listingId);
+        const refundTxs: WalletTransaction[] = [];
+        const listing = listings.find(l => l.id === listingId);
+        const price = listing?.price || 0;
+
+        const updatedEntries = entries.map(e => {
+            if (e.status === BreakEntryStatus.CHARGED) {
+                refundTxs.push({
+                    id: `tx_ref_${e.id}`,
+                    userId: e.userId,
+                    amount: price,
+                    type: TransactionType.REFUND,
+                    description: `Break Cancelled: ${listing?.title}`,
+                    balanceAfter: 0,
+                    createdAt: new Date(),
+                    referenceId: e.id,
+                    referenceType: 'BREAK_ENTRY'
+                });
+                setPaymentIntents(prev => prev.map(p => p.id === e.paymentIntentId ? { ...p, status: PaymentStatus.REFUNDED } : p));
+            } else if (e.status === BreakEntryStatus.AUTHORIZED) {
+                setPaymentIntents(prev => prev.map(p => p.id === e.paymentIntentId ? { ...p, status: PaymentStatus.FAILED } : p));
+            }
+            return { ...e, status: BreakEntryStatus.CANCELLED };
+        });
+
+        setBreakEntries(prev => prev.map(e => {
+            const updated = updatedEntries.find(u => u.id === e.id);
+            return updated || e;
+        }));
+        
+        setTransactions(prev => [...refundTxs, ...prev]);
+
+        // Refund currentUser instantly if affected
+        const myRefund = refundTxs.filter(tx => tx.userId === currentUser?.id).reduce((acc, tx) => acc + tx.amount, 0);
+        if (currentUser && myRefund > 0) {
+            updateProfile({ walletBalance: currentUser.walletBalance + myRefund });
+        }
+
+        // Notify
+        entries.forEach(e => {
+             const notif: Notification = {
+                id: `n_can_${Date.now()}_${e.userId}`,
+                userId: e.userId,
+                type: 'BREAK_CANCELLED',
+                title: 'Break Cancelled',
+                message: `The break you joined has been cancelled. Funds have been released/refunded.`,
+                isRead: false,
+                createdAt: new Date(),
+                linkTo: listingId
+            };
+            setNotifications(prev => [notif, ...prev]);
+        });
     };
 
     const joinWaitlist = async (listingId: string) => {
