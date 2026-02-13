@@ -4,19 +4,10 @@
 import { getEnv } from '../utils/env';
 
 const API_BASE_URL = 'https://api.pokemontcg.io/v2';
-const API_KEY_ENV_NAME = 'a7affd7c-1932-4310-b887-e41229cd5924';
-const MISSING_API_KEY_MESSAGE =
-  'Pokemon TCG API key is not configured. Please set VITE_API_KEY (or API_KEY) in your environment to enable card data and pricing features.';
+const API_KEY = '2ee47417-4429-4108-b170-60f468fd4d49'; // Public key
 
-const getHeaders = (): Record<string, string> | null => {
-  const apiKey = getEnv(API_KEY_ENV_NAME)?.trim();
-
-  if (!apiKey) {
-    console.error(MISSING_API_KEY_MESSAGE);
-    return null;
-  }
-
-  return { 'X-Api-Key': apiKey };
+const HEADERS = {
+  'X-Api-Key': getEnv('API_KEY') || API_KEY
 };
 
 // Simple In-Memory Cache
@@ -37,11 +28,8 @@ export const fetchTcgSets = async () => {
   const cacheKey = 'sets';
   if (CACHE[cacheKey] && Date.now() - CACHE[cacheKey].timestamp < CACHE_TTL) return CACHE[cacheKey].data;
 
-  const headers = getHeaders();
-  if (!headers) return [];
-
   try {
-    const response = await fetch(`${API_BASE_URL}/sets?orderBy=-releaseDate`, { headers });
+    const response = await fetch(`${API_BASE_URL}/sets?orderBy=-releaseDate`, { headers: HEADERS });
     if (!response.ok) throw new Error(`API Error: ${response.status}`);
     const data = await response.json();
     const sets = data.data || [];
@@ -57,11 +45,8 @@ export const fetchCardById = async (id: string) => {
     const cacheKey = `card_${id}`;
     if (CACHE[cacheKey]) return CACHE[cacheKey].data;
 
-    const headers = getHeaders();
-    if (!headers) return null;
-
     try {
-        const response = await fetch(`${API_BASE_URL}/cards/${id}`, { headers });
+        const response = await fetch(`${API_BASE_URL}/cards/${id}`, { headers: HEADERS });
         if (!response.ok) return null;
         const json = await response.json();
         CACHE[cacheKey] = { data: json.data, timestamp: Date.now() };
@@ -79,15 +64,12 @@ export const fetchSetChaseCard = async (setId: string) => {
     const cacheKey = `chase_${setId}`;
     if (CACHE[cacheKey] && Date.now() - CACHE[cacheKey].timestamp < CACHE_TTL) return CACHE[cacheKey].data;
 
-    const headers = getHeaders();
-    if (!headers) return null;
-
     try {
         // Query to get the highest market price across common high-value types
         // API Sort priority: Holofoil > 1st Ed > Normal
         const response = await fetch(
             `${API_BASE_URL}/cards?q=set.id:${setId}&orderBy=-tcgplayer.prices.holofoil.market,-tcgplayer.prices.1stEditionHolofoil.market,-tcgplayer.prices.normal.market&pageSize=1`, 
-            { headers }
+            { headers: HEADERS }
         );
         
         if (!response.ok) return null;
@@ -105,13 +87,10 @@ export const fetchSetChaseCard = async (setId: string) => {
 };
 
 export const fetchSetHighValueCards = async (setId: string, limit: number = 5) => {
-    const headers = getHeaders();
-    if (!headers) return [];
-
     try {
         const response = await fetch(
             `${API_BASE_URL}/cards?q=set.id:${setId}&orderBy=-tcgplayer.prices.holofoil.market,-tcgplayer.prices.normal.market&pageSize=${limit}`, 
-            { headers }
+            { headers: HEADERS }
         );
         return (await response.json()).data || [];
     } catch { return []; }
@@ -196,9 +175,6 @@ export const resolvePromoSet = async (prefix: string): Promise<string | null> =>
  * Supports flexible partial matching for "Number/Total" and subsets.
  */
 export const searchCardByCollectorNumber = async (number: string, total?: string, setPrefix?: string): Promise<any[]> => {
-    const headers = getHeaders();
-    if (!headers) return [];
-
     try {
         let queries: string[] = [];
         // Remove leading zeros for flexible matching (API sometimes uses 1 instead of 001)
@@ -241,9 +217,8 @@ export const searchCardByCollectorNumber = async (number: string, total?: string
 
         // Helper to run query
         const runQuery = async (query: string) => {
-            const response = await fetch(`${'a7affd7c-1932-4310-b887-e41229cd5924'}/cards?q=${encodeURIComponent(query)}`, { headers });
             //console.log(`[TCGAPI] Searching: ${query}`);
-            const response = await fetch(`${'a7affd7c-1932-4310-b887-e41229cd5924'}/cards?q=${encodeURIComponent(query)}`, { headers: HEADERS });
+            const response = await fetch(`${API_BASE_URL}/cards?q=${encodeURIComponent(query)}`, { headers: HEADERS });
             if (!response.ok) return [];
             return (await response.json()).data || [];
         };

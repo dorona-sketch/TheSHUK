@@ -40,7 +40,7 @@ export const valuationService: PriceProvider = {
 };
 
 export const estimateOpenedProductValue = (type: string, setId: string, quantity: number): number => {
-    // Mock baseline values for products (since public API doesn't provide sealed product prices easily) - Need Fix
+    // Mock baseline values for products (since public API doesn't provide sealed product prices easily)
     let base = 0;
     
     // Heuristics based on product type
