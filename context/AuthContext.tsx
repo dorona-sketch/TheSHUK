@@ -7,13 +7,17 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string, role?: 'BUYER' | 'SELLER') => Promise<void>;
+  register: (name: string, email: string, password: string, role: 'BUYER' | 'SELLER') => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
-  requestPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
-  resetPassword: (email: string, code: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
-  initiateEmailVerification: () => Promise<{ success: boolean; message: string }>;
-  completeEmailVerification: (code: string) => Promise<{ success: boolean; message: string }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean, message: string }>;
+  resetPassword: (email: string, code: string, newPass: string) => Promise<{ success: boolean, message: string }>;
+  initiateEmailVerification: () => Promise<{ success: boolean, message: string }>;
+  completeEmailVerification: (code: string) => Promise<{ success: boolean, message: string }>;
+  getAllUsers: () => Promise<User[]>;
+  suspendUser: (userId: string, reason: string, until: Date) => Promise<{ success: boolean; message: string }>;
+  unsuspendUser: (userId: string) => Promise<{ success: boolean; message: string }>;
+  verifySeller: (userId: string) => Promise<{ success: boolean; message: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -78,6 +82,23 @@ export const AuthProvider = ({ children }: PropsWithChildren<{}>) => {
       return res;
   };
 
+  // --- Admin Methods ---
+  const getAllUsers = async () => {
+      return await authService.getAllUsers();
+  };
+
+  const suspendUser = async (userId: string, reason: string, until: Date) => {
+      return await authService.suspendUser(userId, reason, until);
+  };
+
+  const unsuspendUser = async (userId: string) => {
+      return await authService.unsuspendUser(userId);
+  };
+
+  const verifySeller = async (userId: string) => {
+      return await authService.verifySeller(userId);
+  };
+
   return (
     <AuthContext.Provider value={{ 
         user, 
@@ -88,8 +109,12 @@ export const AuthProvider = ({ children }: PropsWithChildren<{}>) => {
         updateProfile, 
         requestPasswordReset, 
         resetPassword, 
-        initiateEmailVerification,
-        completeEmailVerification
+        initiateEmailVerification, 
+        completeEmailVerification,
+        getAllUsers,
+        suspendUser,
+        unsuspendUser,
+        verifySeller
     }}>
       {children}
     </AuthContext.Provider>
@@ -98,7 +123,7 @@ export const AuthProvider = ({ children }: PropsWithChildren<{}>) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;

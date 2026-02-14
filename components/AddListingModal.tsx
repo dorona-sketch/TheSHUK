@@ -216,6 +216,20 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
   // --- HANDLERS ---
 
+  const handleTypeChange = (newType: ListingType) => {
+      setFormData(prev => ({ ...prev, type: newType }));
+      
+      if (newType === ListingType.TIMED_BREAK) {
+          setCurrentStep('EDIT_DETAILS');
+      } else {
+          // If switching back from Break to Sales, show upload screen if we are not already editing a sale
+          // For simplicity in this flow, reset to UPLOAD to encourage scanning for singles/slabs
+          if (formData.type === ListingType.TIMED_BREAK) {
+              setCurrentStep('UPLOAD');
+          }
+      }
+  };
+
   const processUploadedImage = async (file: File) => {
       const reader = new FileReader();
       reader.onloadend = async () => {
@@ -232,11 +246,21 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                   // 1. Auto Crop
                   setProcessingStatus('Auto-cropping card...');
                   const croppedBase64 = await autoCropCard(rawBase64);
+                  
+                  if (!croppedBase64) {
+                      // Fallback to manual if auto-crop fails
+                      console.log("Auto-crop failed, triggering manual crop");
+                      setIsManualCropping(true);
+                      setProcessingStatus('');
+                      return; // Halt pipeline here, waiting for manual crop
+                  }
+
                   const croppedUrl = `data:${mime};base64,${croppedBase64}`;
                   setCroppedImage(croppedUrl);
 
                   // 2. Identify
                   setProcessingStatus('Identifying card...');
+                  // We pass the already cropped base64 to recognition
                   const res = await CardRecognitionService.identify(croppedBase64, mime);
                   
                   if (res.candidates.length > 0) {
@@ -248,12 +272,12 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                           setCurrentStep('REVIEW');
                       }
                   } else {
-                      // Fallback to manual
+                      // Fallback to manual entry
                       setCurrentStep('EDIT_DETAILS');
                   }
               } catch (e) {
                   console.error("Pipeline failed", e);
-                  setCroppedImage(fullDataUrl); // Fallback to raw if crop crashes
+                  setCroppedImage(fullDataUrl); // Fallback to raw if crashes
                   setCurrentStep('EDIT_DETAILS');
               }
           } else {
@@ -269,12 +293,30 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       setIsManualCropping(false);
       setProcessingStatus('Processing Crop...');
       
-      const rawBase64 = tempOriginalImage.split(',')[1];
-      const croppedBase64 = await performPerspectiveWarp(rawBase64, points);
-      setCroppedImage(`data:image/jpeg;base64,${croppedBase64}`);
-      
-      // Re-run recognition on new crop? Optional, but good for UX
-      // For now, just update image and stay on form
+      try {
+          const rawBase64 = tempOriginalImage.split(',')[1];
+          const croppedBase64 = await performPerspectiveWarp(rawBase64, points);
+          setCroppedImage(`data:image/jpeg;base64,${croppedBase64}`);
+          
+          // Resume Identification Pipeline
+          setProcessingStatus('Identifying card...');
+          const res = await CardRecognitionService.identify(croppedBase64, 'image/jpeg');
+          
+          if (res.candidates.length > 0) {
+              setCandidates(res.candidates);
+              if (res.candidates.length === 1 || res.candidates[0].confidence > 0.8) {
+                  applyCandidate(res.candidates[0]);
+                  setCurrentStep('EDIT_DETAILS');
+              } else {
+                  setCurrentStep('REVIEW');
+              }
+          } else {
+              setCurrentStep('EDIT_DETAILS');
+          }
+      } catch (e) {
+          console.error("Manual crop pipeline error", e);
+          setCurrentStep('EDIT_DETAILS');
+      }
   };
 
   const applyCandidate = (c: CardCandidate) => {
@@ -302,7 +344,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       if (file) processUploadedImage(file);
   };
 
-  // ... (Prize Logic same as before) ...
+  // --- Prize Logic ---
   const handlePrizeFile = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
@@ -311,25 +353,43 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
               const result = reader.result as string;
               setNewPrizeImage(result); 
               setNewPrizeBase64(result.split(',')[1]);
+              
+              // Auto-trigger recognition if image added
+              if (result) {
+                  triggerPrizeIdentify(result.split(',')[1]);
+              }
           };
           reader.readAsDataURL(file);
       }
   };
 
-  const handleIdentifyPrize = async () => {
-      if (!newPrizeBase64) return;
+  const triggerPrizeIdentify = async (base64: string) => {
       setPrizeIdentifying(true);
       setPrizeCandidates([]);
       try {
-          const res = await CardRecognitionService.identify(newPrizeBase64, 'image/jpeg');
+          // Use auto-crop for prizes too? Yes, usually cards.
+          const cropped = await autoCropCard(base64);
+          // If auto crop fails for prize, we default to full image (processedBase64 handling in service)
+          const target = cropped || base64; 
+          
+          const res = await CardRecognitionService.identify(target, 'image/jpeg');
           if (res.candidates.length === 0) {
-              alert("Could not identify card. Please enter details manually.");
+              console.log("No prize match found");
           } else if (res.candidates.length === 1) {
               await selectPrizeCandidate(res.candidates[0]);
           } else {
               setPrizeCandidates(res.candidates);
           }
-      } catch (e) { console.error(e); } finally { setPrizeIdentifying(false); }
+      } catch (e) { 
+          console.error("Prize scan error", e); 
+      } finally { 
+          setPrizeIdentifying(false); 
+      }
+  };
+
+  const handleIdentifyPrize = async () => {
+      if (!newPrizeBase64) return;
+      triggerPrizeIdentify(newPrizeBase64);
   };
 
   const selectPrizeCandidate = async (match: CardCandidate) => {
@@ -338,7 +398,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       setNewPrize(prev => ({
           ...prev,
           title: match.cardName + (match.variant ? ` (${match.variant})` : ''),
-          description: `${match.setName} - ${match.rarity} - ${match.condition}`,
+          description: `${match.setName} - ${match.rarity}`,
           estimatedValue: price,
           detectedCardId: match.id,
           detectedPrice: price
@@ -361,6 +421,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       setNewPrize({ quantity: 1, howToWin: 'Random', title: '', estimatedValue: 0 });
       setNewPrizeImage(null);
       setNewPrizeBase64(null);
+      setPrizeCandidates([]);
   };
 
   const handleContentImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -415,7 +476,9 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
           additionalPrizes: formData.type === ListingType.TIMED_BREAK ? prizes : undefined,
           valuation: formData.type === ListingType.TIMED_BREAK ? valuation : undefined,
           breakContentImages: contentImages,
-          boosterName: openedProduct.productName
+          boosterName: openedProduct.productName,
+          title: formData.type === ListingType.TIMED_BREAK ? openedProduct.productName : formData.title, // Use product name for breaks if title empty
+          description: formData.type === ListingType.TIMED_BREAK ? `Join our ${openedProduct.productName} break! Guaranteed: ${formData.minPrizeDesc}. Live: ${formData.preferredLiveWindow}` : formData.description
       };
 
       if (formData.type === ListingType.TIMED_BREAK && !initialData) {
@@ -436,7 +499,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
         <ImageCropper 
             imageSrc={tempOriginalImage} 
             onComplete={handleManualCropComplete} 
-            onCancel={() => setIsManualCropping(false)} 
+            onCancel={() => { setIsManualCropping(false); setCurrentStep('EDIT_DETAILS'); setCroppedImage(tempOriginalImage); }} 
         />
     )}
     
@@ -447,10 +510,10 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
             <h3 className="text-xl font-bold mb-6 text-gray-900">{initialData ? 'Edit Listing' : 'Create New Listing'}</h3>
             
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
-                {!initialData && currentStep === 'UPLOAD' && (
+                {!initialData && currentStep !== 'PROCESSING' && (
                     <div className="grid grid-cols-3 gap-2 bg-gray-100 p-1 rounded-lg mb-6">
                         {[ListingType.DIRECT_SALE, ListingType.AUCTION, ListingType.TIMED_BREAK].map(t => (
-                            <button type="button" key={t} onClick={() => setFormData(p => ({...p, type: t}))} 
+                            <button type="button" key={t} onClick={() => handleTypeChange(t)} 
                                 className={`py-2 text-sm font-bold rounded-md transition-all ${formData.type === t ? 'bg-white shadow text-primary-600' : 'text-gray-500 hover:text-gray-700'}`}>
                                 {t === ListingType.TIMED_BREAK ? 'Timed Break' : t === ListingType.AUCTION ? 'Auction' : 'Buy Now'}
                             </button>
@@ -458,8 +521,8 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                     </div>
                 )}
 
-                {/* --- STEP 1: UPLOAD --- */}
-                {currentStep === 'UPLOAD' && (
+                {/* --- STEP 1: UPLOAD (Only for Singles/Auctions) --- */}
+                {currentStep === 'UPLOAD' && formData.type !== ListingType.TIMED_BREAK && (
                     <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors p-10" onClick={() => fileInputRef.current?.click()}>
                         <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
                             <svg className="w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -493,7 +556,12 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                         
                         <div className="grid grid-cols-1 gap-2">
                             {candidates.map((c, i) => (
-                                <div key={i} onClick={() => { applyCandidate(c); setCurrentStep('EDIT_DETAILS'); }} className="flex items-center gap-4 p-3 border rounded-lg hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors">
+                                <div key={i} onClick={() => { applyCandidate(c); setCurrentStep('EDIT_DETAILS'); }} className="flex items-center gap-4 p-3 border rounded-lg hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-colors relative">
+                                    {c.isChase && (
+                                        <div className="absolute top-2 right-2 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm z-10 flex items-center gap-1">
+                                            <span className="text-xs">🔥</span> CHASE
+                                        </div>
+                                    )}
                                     <img src={c.imageUrl} className="w-12 h-16 object-contain bg-gray-100 rounded" />
                                     <div className="flex-1">
                                         <div className="font-bold text-gray-900">{c.cardName}</div>
@@ -715,7 +783,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                                 <button onClick={() => setPrizes(prizes.filter(x => x.id !== p.id))} className="text-gray-400 hover:text-red-500 p-1">×</button>
                                             </div>
                                         ))}
-                                        <div className="flex flex-col gap-3 mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200 border-dashed">
+                                        <div className="flex flex-col gap-3 mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200 border-dashed relative">
                                             <div className="flex flex-col sm:flex-row gap-3">
                                                 <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-white transition-colors shrink-0 bg-white overflow-hidden relative" onClick={() => prizeInputRef.current?.click()}>
                                                     {newPrizeImage ? <img src={newPrizeImage} className="w-full h-full object-cover" /> : <span className="text-xs text-gray-400 text-center">+Img</span>}
@@ -734,6 +802,26 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                                     </div>
                                                 </div>
                                             </div>
+                                            
+                                            {/* Prize Candidate Selection UI */}
+                                            {prizeCandidates.length > 0 && (
+                                                <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl z-20 mt-1 max-h-60 overflow-y-auto">
+                                                    <div className="p-2 text-xs font-bold text-gray-500 bg-gray-50 sticky top-0 flex justify-between items-center">
+                                                        <span>Select Match:</span>
+                                                        <button onClick={() => setPrizeCandidates([])} className="text-gray-400 hover:text-gray-600">×</button>
+                                                    </div>
+                                                    {prizeCandidates.map((c, i) => (
+                                                        <div key={i} onClick={() => selectPrizeCandidate(c)} className="flex items-center gap-2 p-2 hover:bg-blue-50 cursor-pointer border-b last:border-0 transition-colors">
+                                                            <img src={c.imageUrl} className="w-8 h-10 object-contain bg-gray-100 rounded border border-gray-200" />
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="font-bold text-xs truncate text-gray-900">{c.cardName}</div>
+                                                                <div className="text-[10px] text-gray-500">{c.setName} • {c.number}</div>
+                                                            </div>
+                                                            {c.priceEstimate && <div className="text-xs font-bold text-green-600">${c.priceEstimate}</div>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
-import { PokemonType, VariantTag, CardCategory, Condition, SortOption, ProductCategory, GradingCompany, SealedProductType, SearchScope, BreakStatus, AppMode, Language } from '../types';
+import { PokemonType, VariantTag, CardCategory, Condition, SortOption, ProductCategory, GradingCompany, SealedProductType, SearchScope, BreakStatus, AppMode, Language, TcgSet } from '../types';
 import { TAG_DISPLAY_LABELS } from '../constants';
 
 interface FilterDrawerProps {
@@ -36,7 +36,6 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   const { filters, setFilter, sortOption, setSortOption, resetFilters, getSuggestions, appMode, availableSets } = useStore();
 
   // --- Local State for Atomic Updates ---
-  // Using Sets for O(1) lookup complexity during render cycles
   const [localSearch, setLocalSearch] = useState(filters.searchQuery);
   const [localScope, setLocalScope] = useState<SearchScope>(filters.searchScope || SearchScope.ALL);
   const [localSort, setLocalSort] = useState<SortOption>(sortOption);
@@ -74,6 +73,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   const pokeSuggestionRef = useRef<HTMLDivElement>(null);
 
   const drawerRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   // Sync local state with global state when drawer opens (Snap to current reality)
   useEffect(() => {
@@ -100,6 +100,89 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
     }
   }, [isOpen, filters, sortOption]);
 
+  // --- Accessibility: Focus Management & Trap ---
+  useEffect(() => {
+      if (isOpen) {
+          // Save current focus
+          previousFocusRef.current = document.activeElement as HTMLElement;
+          
+          // Focus the close button or first focusable element inside the drawer
+          const focusable = drawerRef.current?.querySelectorAll(
+              'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
+          
+          if (focusable && focusable.length > 0) {
+              // Try to focus the first input if available (usually search), otherwise the close button
+              const searchInput = drawerRef.current?.querySelector('input');
+              if (searchInput) {
+                  (searchInput as HTMLElement).focus();
+              } else {
+                  (focusable[0] as HTMLElement).focus();
+              }
+          }
+
+          // Disable body scroll
+          document.body.style.overflow = 'hidden';
+      } else {
+          // Restore focus
+          if (previousFocusRef.current) {
+              previousFocusRef.current.focus();
+          }
+          // Enable body scroll
+          document.body.style.overflow = '';
+      }
+
+      // Cleanup on unmount in case component is removed while open
+      return () => {
+          document.body.style.overflow = '';
+      };
+  }, [isOpen]);
+
+  // Handle Tab Trap and Escape Key
+  useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+          if (!isOpen) return;
+
+          if (e.key === 'Escape') {
+              onClose();
+              return;
+          }
+
+          if (e.key === 'Tab') {
+              if (!drawerRef.current) return;
+              
+              const focusableElements = drawerRef.current.querySelectorAll(
+                  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+              );
+              
+              if (focusableElements.length === 0) return;
+
+              const firstElement = focusableElements[0] as HTMLElement;
+              const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+              if (e.shiftKey) { // Shift + Tab
+                  if (document.activeElement === firstElement) {
+                      e.preventDefault();
+                      lastElement.focus();
+                  }
+              } else { // Tab
+                  if (document.activeElement === lastElement) {
+                      e.preventDefault();
+                      firstElement.focus();
+                  }
+              }
+          }
+      };
+
+      if (isOpen) {
+          window.addEventListener('keydown', handleKeyDown);
+      }
+      
+      return () => {
+          window.removeEventListener('keydown', handleKeyDown);
+      };
+  }, [isOpen, onClose]);
+
   // --- Derived Data for Selectors ---
   const uniqueSeries = useMemo(() => {
       const series = new Set(availableSets.map(s => s.series));
@@ -113,6 +196,16 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       }
       return sets.sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
   }, [availableSets, localSeries]);
+
+  // Group sets by series for better display in dropdown when no series selected
+  const setsBySeries = useMemo(() => {
+      const grouped: Record<string, typeof availableSets> = {};
+      visibleSets.forEach(set => {
+          if (!grouped[set.series]) grouped[set.series] = [];
+          grouped[set.series].push(set);
+      });
+      return grouped;
+  }, [visibleSets]);
 
   // --- Debounced Suggestions (Main Search) ---
   useEffect(() => {
@@ -176,7 +269,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   }, []);
 
   // --- Keyboard Navigation for Autocomplete ---
-  const handleKeyDown = (e: React.KeyboardEvent, isPokemonSearch: boolean = false) => {
+  const handleInputKeyDown = (e: React.KeyboardEvent, isPokemonSearch: boolean = false) => {
       const isShowing = isPokemonSearch ? showPokeSuggestions : showSuggestions;
       const suggestionsList = isPokemonSearch ? pokeSuggestions : suggestions;
       const activeIndex = isPokemonSearch ? activePokeSuggestionIndex : activeSuggestionIndex;
@@ -184,7 +277,12 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       const setShow = isPokemonSearch ? setShowPokeSuggestions : setShowSuggestions;
       const setVal = isPokemonSearch ? setLocalPokemonName : setLocalSearch;
 
-      if (!isShowing) return;
+      if (!isShowing) {
+          if (e.key === 'ArrowDown') {
+              setShow(true);
+          }
+          return;
+      }
 
       if (e.key === 'ArrowDown') {
           e.preventDefault();
@@ -201,6 +299,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
               setShow(false);
           }
       } else if (e.key === 'Escape') {
+          e.stopPropagation(); // Stop global escape from closing modal immediately
           setShow(false);
       }
   };
@@ -298,7 +397,12 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="filter-drawer-title">
+    <div 
+        className="fixed inset-0 z-[100] overflow-hidden" 
+        role="dialog" 
+        aria-modal="true" 
+        aria-labelledby="filter-drawer-title"
+    >
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-gray-600 bg-opacity-50 transition-opacity backdrop-blur-sm" 
@@ -317,12 +421,14 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                 <h2 id="filter-drawer-title" className="text-lg font-bold text-gray-900">Filters & Sort</h2>
                 <div className="flex gap-4">
                     <button 
+                        type="button"
                         onClick={handleGlobalReset} 
                         className="text-sm text-red-600 hover:text-red-800 font-medium hover:underline transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 rounded"
                     >
                         Clear All
                     </button>
                     <button 
+                        type="button"
                         onClick={onClose} 
                         className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500"
                         aria-label="Close filters"
@@ -350,12 +456,13 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                             <input
                                 ref={searchInputRef}
                                 type="text"
+                                role="combobox"
                                 value={localSearch}
                                 onChange={(e) => {
                                     setLocalSearch(e.target.value);
                                     setActiveSuggestionIndex(-1);
                                 }}
-                                onKeyDown={(e) => handleKeyDown(e, false)}
+                                onKeyDown={(e) => handleInputKeyDown(e, false)}
                                 onFocus={() => {
                                     if (localSearch) setShowSuggestions(true);
                                 }}
@@ -363,11 +470,14 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-shadow shadow-sm"
                                 autoComplete="off"
                                 aria-label="Search Query"
-                                aria-haspopup="listbox"
+                                aria-autocomplete="list"
+                                aria-controls="search-results-list"
+                                aria-activedescendant={activeSuggestionIndex >= 0 ? `search-result-item-${activeSuggestionIndex}` : undefined}
                                 aria-expanded={showSuggestions}
                             />
                             {localSearch && (
                                 <button
+                                    type="button"
                                     onClick={clearSearch}
                                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
                                     aria-label="Clear search"
@@ -382,10 +492,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                             {showSuggestions && (
                                 <div ref={suggestionRef} className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-60 overflow-y-auto z-50">
                                     {suggestions.length > 0 ? (
-                                        <ul role="listbox">
+                                        <ul id="search-results-list" role="listbox">
                                             {suggestions.map((suggestion, idx) => (
                                                 <li 
                                                     key={idx}
+                                                    id={`search-result-item-${idx}`}
                                                     role="option"
                                                     aria-selected={idx === activeSuggestionIndex}
                                                     onClick={() => handleSuggestionClick(suggestion, false)}
@@ -410,11 +521,12 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
 
                         {/* Scope Selector */}
                         <div className="flex gap-2 items-center mt-1">
-                            <span className="text-xs text-gray-500 font-medium">Search in:</span>
+                            <span className="text-xs text-gray-500 font-medium" id="scope-label">Search in:</span>
                             <select 
                                 value={localScope}
+                                aria-labelledby="scope-label"
                                 onChange={(e) => setLocalScope(e.target.value as SearchScope)}
-                                className="bg-gray-100 border-none text-xs font-bold text-gray-700 rounded-md py-1 pl-2 pr-6 focus:ring-1 focus:ring-primary-500 cursor-pointer"
+                                className="bg-gray-100 border-none text-xs font-bold text-gray-700 rounded-md py-1 pl-2 pr-6 focus:ring-2 focus:ring-primary-500 cursor-pointer"
                             >
                                 {Object.values(SearchScope).map(scope => (
                                     <option key={scope} value={scope}>{SCOPE_LABELS[scope]}</option>
@@ -428,27 +540,38 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                 <section className="relative z-10">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Pokémon Name</h3>
                     <div className="relative group">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg className="h-5 w-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" strokeWidth="2" />
+                                <circle cx="12" cy="12" r="3" strokeWidth="2" fill="currentColor" className="text-gray-100" />
+                            </svg>
+                        </div>
                         <input
                             ref={pokeInputRef}
                             type="text"
+                            role="combobox"
                             value={localPokemonName}
                             onChange={(e) => {
                                 setLocalPokemonName(e.target.value);
                                 setActivePokeSuggestionIndex(-1);
                             }}
-                            onKeyDown={(e) => handleKeyDown(e, true)}
+                            onKeyDown={(e) => handleInputKeyDown(e, true)}
                             onFocus={() => {
                                 if (localPokemonName) setShowPokeSuggestions(true);
                             }}
                             placeholder="e.g. Charizard"
-                            className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-shadow shadow-sm"
+                            className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-shadow shadow-sm"
                             autoComplete="off"
                             aria-label="Pokemon Name"
-                            aria-haspopup="listbox"
+                            aria-autocomplete="list"
+                            aria-controls="poke-results-list"
+                            aria-activedescendant={activePokeSuggestionIndex >= 0 ? `poke-result-item-${activePokeSuggestionIndex}` : undefined}
                             aria-expanded={showPokeSuggestions}
                         />
                         {localPokemonName && (
                             <button
+                                type="button"
                                 onClick={clearPokemonName}
                                 className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
                                 aria-label="Clear pokemon name"
@@ -463,10 +586,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                         {showPokeSuggestions && (
                             <div ref={pokeSuggestionRef} className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-60 overflow-y-auto z-50">
                                 {pokeSuggestions.length > 0 ? (
-                                    <ul role="listbox">
+                                    <ul id="poke-results-list" role="listbox">
                                         {pokeSuggestions.map((suggestion, idx) => (
                                             <li 
                                                 key={idx}
+                                                id={`poke-result-item-${idx}`}
                                                 role="option"
                                                 aria-selected={idx === activePokeSuggestionIndex}
                                                 onClick={() => handleSuggestionClick(suggestion, true)}
@@ -496,7 +620,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     <select 
                         value={localSort} 
                         onChange={(e) => setLocalSort(e.target.value as SortOption)}
-                        className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-primary-500 focus:border-primary-500 bg-white"
+                        className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
                         aria-label="Sort Order"
                     >
                         <option value={SortOption.NEWEST}>Newest Listed</option>
@@ -513,7 +637,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     <select
                         value={localLanguage}
                         onChange={(e) => setLocalLanguage(e.target.value)}
-                        className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-primary-500 focus:border-primary-500 bg-white"
+                        className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
                     >
                         <option value="">Any Language</option>
                         {Object.values(Language).map(lang => (
@@ -527,14 +651,15 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Series & Set</h3>
                     <div className="space-y-3">
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Era / Series</label>
+                            <label htmlFor="series-select" className="block text-xs font-medium text-gray-500 mb-1">Era / Series</label>
                             <select
+                                id="series-select"
                                 value={localSeries}
                                 onChange={(e) => {
                                     setLocalSeries(e.target.value);
                                     setLocalSet(''); // Reset set when series changes
                                 }}
-                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
                             >
                                 <option value="">All Eras</option>
                                 {uniqueSeries.map(series => (
@@ -543,17 +668,36 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Set / Expansion</label>
+                            <label htmlFor="set-select" className="block text-xs font-medium text-gray-500 mb-1">Set / Expansion</label>
                             <select
+                                id="set-select"
                                 value={localSet}
-                                onChange={(e) => setLocalSet(e.target.value)}
-                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-primary-500 focus:border-primary-500 bg-white"
+                                onChange={(e) => {
+                                    const newSetId = e.target.value;
+                                    setLocalSet(newSetId);
+                                    // Auto-select Series if a Set is chosen from "All Eras" view
+                                    if (newSetId && !localSeries) {
+                                        const set = availableSets.find(s => s.id === newSetId);
+                                        if (set) setLocalSeries(set.series);
+                                    }
+                                }}
+                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
                                 disabled={availableSets.length === 0}
                             >
                                 <option value="">All Sets</option>
-                                {visibleSets.map(set => (
-                                    <option key={set.id} value={set.id}>{set.name} ({set.total})</option>
-                                ))}
+                                {localSeries ? (
+                                    visibleSets.map(set => (
+                                        <option key={set.id} value={set.id}>{set.name} ({set.total})</option>
+                                    ))
+                                ) : (
+                                    Object.entries(setsBySeries).sort().map(([series, sets]) => (
+                                        <optgroup key={series} label={series}>
+                                            {(sets as TcgSet[]).map(set => (
+                                                <option key={set.id} value={set.id}>{set.name} ({set.total})</option>
+                                            ))}
+                                        </optgroup>
+                                    ))
+                                )}
                             </select>
                         </div>
                     </div>
@@ -570,7 +714,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 placeholder="Min" 
                                 value={localPriceMin} 
                                 onChange={(e) => setLocalPriceMin(e.target.value)}
-                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 pl-6 text-sm focus:ring-primary-500 focus:border-primary-500"
+                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 pl-6 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                                 aria-label="Min Price"
                             />
                         </div>
@@ -582,7 +726,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 placeholder="Max" 
                                 value={localPriceMax} 
                                 onChange={(e) => setLocalPriceMax(e.target.value)}
-                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 pl-6 text-sm focus:ring-primary-500 focus:border-primary-500"
+                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 pl-6 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                                 aria-label="Max Price"
                             />
                         </div>
@@ -603,10 +747,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 const isSelected = localBreakStatus.has(status.val);
                                 return (
                                     <button
+                                        type="button"
                                         key={status.val}
                                         onClick={() => toggleFilter(status.val, setLocalBreakStatus)}
                                         aria-pressed={isSelected}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all transform active:scale-95 ${
+                                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
                                             isSelected
                                             ? 'bg-purple-600 text-white border-purple-600 shadow-md'
                                             : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
@@ -628,10 +773,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                             const isSelected = localPokemonTypes.has(type);
                             return (
                                 <button
+                                    type="button"
                                     key={type}
                                     onClick={() => toggleFilter(type, setLocalPokemonTypes)}
                                     aria-pressed={isSelected}
-                                    className={`px-2 py-2 rounded-md text-xs font-bold transition-all border shadow-sm active:scale-95 ${
+                                    className={`px-2 py-2 rounded-md text-xs font-bold transition-all border shadow-sm active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
                                         isSelected 
                                         ? `ring-2 ring-offset-1 ring-primary-500 ${TYPE_COLORS[type]}`
                                         : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
@@ -652,10 +798,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                              const isSelected = localCardCategories.has(cat);
                              return (
                                  <button
+                                    type="button"
                                     key={cat}
                                     onClick={() => toggleFilter(cat, setLocalCardCategories)}
                                     aria-pressed={isSelected}
-                                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors shadow-sm ${
+                                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
                                         isSelected
                                         ? 'bg-gray-900 text-white border-gray-900'
                                         : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
@@ -673,7 +820,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Rarity & Variants</h3>
                     <div className="grid grid-cols-2 gap-2">
                          {Object.values(VariantTag).map(tag => (
-                             <label key={tag} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-gray-50 rounded-md transition-colors border border-transparent hover:border-gray-200">
+                             <label key={tag} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-gray-50 rounded-md transition-colors border border-transparent hover:border-gray-200 focus-within:ring-2 focus-within:ring-primary-500">
                                  <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${localVariantTags.has(tag) ? 'bg-primary-600 border-primary-600' : 'bg-white border-gray-300'}`}>
                                      {localVariantTags.has(tag) && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                                  </div>
@@ -681,7 +828,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                     type="checkbox" 
                                     checked={localVariantTags.has(tag)}
                                     onChange={() => toggleFilter(tag, setLocalVariantTags)}
-                                    className="hidden"
+                                    className="opacity-0 w-0 h-0 absolute"
                                  />
                                  <span className="text-sm text-gray-700 font-medium">{TAG_DISPLAY_LABELS[tag] || tag}</span>
                              </label>
@@ -698,10 +845,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 const isSelected = localCondition.has(c);
                                 return (
                                     <button
+                                        type="button"
                                         key={c}
                                         onClick={() => toggleFilter(c, setLocalCondition)}
                                         aria-pressed={isSelected}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors shadow-sm ${
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
                                             isSelected ? 'bg-primary-100 border-primary-300 text-primary-800 font-bold' : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-600'
                                         }`}
                                     >
@@ -721,10 +869,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 const isSelected = localGradingCompany.has(company);
                                 return (
                                     <button
+                                        type="button"
                                         key={company}
                                         onClick={() => toggleFilter(company, setLocalGradingCompany)}
                                         aria-pressed={isSelected}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors shadow-sm ${
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
                                             isSelected ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
                                         }`}
                                     >
@@ -741,7 +890,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                          <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Product Type</h3>
                          <div className="grid grid-cols-2 gap-2">
                             {Object.values(SealedProductType).map(type => (
-                                <label key={type} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-gray-50 rounded-md transition-colors border border-transparent hover:border-gray-200">
+                                <label key={type} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-gray-50 rounded-md transition-colors border border-transparent hover:border-gray-200 focus-within:ring-2 focus-within:ring-primary-500">
                                     <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${localSealedProductType.has(type) ? 'bg-primary-600 border-primary-600' : 'bg-white border-gray-300'}`}>
                                         {localSealedProductType.has(type) && <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                                     </div>
@@ -749,7 +898,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                         type="checkbox" 
                                         checked={localSealedProductType.has(type)}
                                         onChange={() => toggleFilter(type, setLocalSealedProductType)}
-                                        className="hidden"
+                                        className="opacity-0 w-0 h-0 absolute"
                                     />
                                     <span className="text-sm text-gray-700 font-medium">{type}</span>
                                 </label>
@@ -761,6 +910,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
 
             <div className="p-4 border-t border-gray-200 bg-gray-50 sticky bottom-0 z-30">
                 <button 
+                    type="button"
                     onClick={handleApply}
                     className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-base font-bold text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all active:scale-[0.98]"
                 >

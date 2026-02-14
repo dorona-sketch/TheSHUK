@@ -8,7 +8,7 @@ export const CardRecognitionService = {
 
     /**
      * MAIN PIPELINE
-     * 1. Pre-process: Auto-Crop card from background & Binarize corners for OCR.
+     * 1. Pre-process: Binarize corners for OCR (Input assumed to be card ROI).
      * 2. OCR: Extract ID (e.g. "001/165", "TG13/TG30", "SWSH123").
      * 3. API Lookup: Fetch candidates by ID logic.
      * 4. Map & Expand Variants: Explode API results into specific variants (Normal, Reverse Holo) with Pricing.
@@ -19,9 +19,14 @@ export const CardRecognitionService = {
         console.time("Total Pipeline Time");
         
         // 1. Image Pre-processing for OCR
-        console.log("Stage 1: Auto-Cropping & Pre-processing...");
-        const croppedBase64 = await autoCropCard(base64Image); // Use OpenCV crop if available
-        const { leftCorner, rightCorner } = await cropImageCorners(croppedBase64);
+        console.log("Stage 1: Pre-processing (Assumes ROI)...");
+        // NOTE: We do NOT call autoCropCard here anymore. 
+        // The UI handles cropping (auto or manual) before calling identify.
+        // However, for HostControls live scan, we might pass a raw frame. 
+        // Ideally HostControls should also use autoCropCard first.
+        // We assume `base64Image` is the best available crop.
+
+        const { leftCorner, rightCorner } = await cropImageCorners(base64Image);
         
         const [binaryLeft, binaryRight] = await Promise.all([
             binarizeBase64(leftCorner),
@@ -111,10 +116,17 @@ export const CardRecognitionService = {
             finalCandidates.push(...variants);
         });
 
-        // 5. Tie-Break Stage (ROI Strip Signature)
+        // 5. Chase Analysis (Parallelized for Speed)
+        await Promise.all(finalCandidates.map(async (candidate) => {
+            const chaseInfo = await this.analyzeChaseStatus(candidate);
+            candidate.isChase = chaseInfo.isChase;
+            if(candidate.isChase) console.log("CHASE CARD FOUND:", candidate.cardName);
+        }));
+
+        // 6. Tie-Break Stage (ROI Strip Signature)
         if (finalCandidates.length > 1) {
             console.log("Stage 4: Ambiguous matches detected. Running Visual Tie-Break...");
-            finalCandidates = await this.performVisualTieBreak(`data:${mimeType};base64,${croppedBase64}`, finalCandidates);
+            finalCandidates = await this.performVisualTieBreak(`data:${mimeType};base64,${base64Image}`, finalCandidates);
         } else {
             console.log("Stage 4: Skipped (Single or No candidate)");
         }

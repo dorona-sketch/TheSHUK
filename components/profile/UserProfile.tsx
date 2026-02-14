@@ -1,31 +1,42 @@
 
-import React, { useState, useRef } from 'react';
-import { User, TransactionType, AppMode } from '../../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { User, AppMode, TransactionType } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useStore } from '../../context/StoreContext';
-import { processImageUpload } from '../../utils/imageProcessing';
 import { getLocationInfo } from '../../services/geminiService';
-import { formatLocalTime, formatDate } from '../../utils/dateUtils';
+import { processImageUpload } from '../../utils/imageProcessing';
 import { EmailVerificationModal } from '../auth/EmailVerificationModal';
+import { formatLocalTime, formatDate } from '../../utils/dateUtils';
 
 interface UserProfileProps {
     user: User;
     isOwnProfile: boolean;
 }
 
-export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) => {
-    const { updateProfile, logout, initiateEmailVerification, completeEmailVerification } = useAuth();
-    const { transactions, depositFunds } = useStore();
+export const UserProfile: React.FC<UserProfileProps> = ({ user: initialUser, isOwnProfile }) => {
+    const { updateProfile, logout, initiateEmailVerification, completeEmailVerification, verifySeller } = useAuth();
+    const { transactions, depositFunds, currentUser } = useStore();
+    
+    // Local state to handle immediate updates (like verification) without full re-fetch
+    const [user, setUser] = useState<User>(initialUser);
+
+    useEffect(() => {
+        setUser(initialUser);
+    }, [initialUser]);
+
     const [isEditing, setIsEditing] = useState(false);
     
     // Edit State
     const [name, setName] = useState(user.displayName || user.name);
     const [bio, setBio] = useState(user.bio || '');
+    const [sellerAbout, setSellerAbout] = useState(user.sellerAbout || '');
     const [location, setLocation] = useState(user.location || '');
     const [isLocationVerified, setIsLocationVerified] = useState(user.isLocationVerified || false);
     const [preferredView, setPreferredView] = useState<AppMode>(user.preferredAppMode || AppMode.COMBINED);
     const [loading, setLoading] = useState(false);
     
+    const BIO_LIMIT = 160;
+
     // Verification State
     const [showVerifyModal, setShowVerifyModal] = useState(false);
     const [verifyingEmail, setVerifyingEmail] = useState(false);
@@ -39,7 +50,9 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
         twitter: user.socialLinks?.twitter || '',
         instagram: user.socialLinks?.instagram || '',
         discord: user.socialLinks?.discord || '',
-        youtube: user.socialLinks?.youtube || ''
+        youtube: user.socialLinks?.youtube || '',
+        tiktok: user.socialLinks?.tiktok || '',
+        website: user.socialLinks?.website || ''
     });
 
     // Verify Toggle (MVP)
@@ -73,7 +86,8 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
         await updateProfile({ 
             name: name, // Keep sync for backward compat
             displayName: name, // New standard
-            bio, 
+            bio,
+            sellerAbout, // New seller detail field 
             location,
             isLocationVerified,
             preferredAppMode: preferredView,
@@ -92,6 +106,26 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
         if (confirm("Switch your account to Seller? You will gain access to the Seller Dashboard.")) {
             await updateProfile({ role: 'SELLER', isVerifiedSeller: false });
             alert("Account upgraded to Seller!");
+        }
+    };
+
+    const handleSwitchToBuyer = async () => {
+        if (confirm("Switch back to Buyer account? You will lose access to the Seller Dashboard and listing tools.")) {
+            await updateProfile({ role: 'BUYER' });
+            alert("Account switched to Buyer.");
+        }
+    };
+
+    const handleAdminVerifySeller = async () => {
+        if (confirm(`Mark ${user.displayName || user.name} as a Verified Seller?`)) {
+            const res = await verifySeller(user.id);
+            if (res.success) {
+                // Update local state immediately for feedback
+                setUser(prev => ({ ...prev, isVerifiedSeller: true }));
+                alert(res.message);
+            } else {
+                alert(res.message);
+            }
         }
     };
 
@@ -199,6 +233,54 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
     const displayAvatar = user.avatarUrl || user.avatar || `https://ui-avatars.com/api/?name=${user.name}`;
     const displayCover = user.coverImageUrl || user.coverImage;
     const displayName = user.displayName || user.name;
+
+    const renderSocialIcon = (type: string, handle: string) => {
+        // ... (Icon logic remains the same)
+        const getIcon = () => {
+            switch(type) {
+                case 'twitter': return <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>;
+                case 'instagram': return <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.069-4.85.069-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>;
+                case 'discord': return <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028 14.09 14.09 0 001.226-1.994.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.956 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.946 2.419-2.157 2.419z"/>;
+                case 'youtube': return <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>;
+                case 'tiktok': return <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.35-1.17.82-1.5 1.47-.35.68-.43 1.45-.14 2.16.38.92 1.1 1.69 2.01 1.99.7.23 1.46.2 2.16.03.87-.21 1.63-.71 2.17-1.44.54-.74.83-1.64.83-2.55 0-4.85.02-9.71 0-14.57v-.02z"/>;
+                default: return <path d="M12 0c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm1 16.057v-3.057h2.994c-.059 1.143-.212 2.24-.456 3.279-.823-.12-1.674-.188-2.538-.222zm1.957 2.162c-.499 1.33-1.159 2.497-1.957 3.456v-3.62c.666.028 1.319.081 1.957.164zm-1.957-7.219h4.184c.059.329.1.666.119 1.009h-4.303v-1.009zm-2-1.009v1.009h-4.303c.019-.343.06-.68.119-1.009h4.184zm-4.184-2h4.184v-1.009h-4.303c-.019.343-.06.68-.119 1.009zm6.184-1.009v1.009h4.303c-.059-.329-.1-.666-.119-1.009h-4.184zm-4.184-2h4.184v-3.057c.864-.034 1.715-.102 2.538-.222.244 1.039.397 2.136.456 3.279h-2.994zm-1.036-2.162c.499-1.33 1.159-2.497 1.957-3.456v-3.62c-.666-.028-1.319-.081-1.957-.164zm7.279 2.162h2.994c.059-1.143.212-2.24.456-3.279.823.12 1.674.188 2.538.222v3.057h-5.988zm1.036-2.162c-.499-1.33-1.159-2.497 1.957-3.456v-3.62c.666.028 1.319.081 1.957-.164zm-8.315 2.162h-2.994c-.059 1.143-.212 2.24-.456 3.279-.823-.12-1.674-.188-2.538-.222v-3.057zm-1.036 2.162c.499 1.33 1.159 2.497 1.957 3.456v3.62c-.666-.028-1.319-.081-1.957-.164zm8.315 5.057v3.057h-2.994c.059-1.143.212-2.24.456-3.279.823.12 1.674.188 2.538.222zm-1.957-2.162c.499-1.33 1.159-2.497 1.957-3.456v3.62c.666.028 1.319.081-1.957.164zm-5.322 2.162h-2.994c.059 1.143.212 2.24.456 3.279-.823.12-1.674.188-2.538.222v-3.057zm1.036 2.162c-.499 1.33-1.159 2.497-1.957 3.456v-3.62c.666.028 1.319.081 1.957.164z"/>;
+            }
+        };
+
+        const getUrl = () => {
+            if (handle.startsWith('http')) return handle;
+            switch(type) {
+                case 'twitter': return `https://twitter.com/${handle}`;
+                case 'instagram': return `https://instagram.com/${handle}`;
+                case 'tiktok': return `https://tiktok.com/@${handle}`;
+                case 'youtube': return `https://youtube.com/@${handle}`;
+                default: return `https://${handle}`;
+            }
+        };
+
+        const getColor = () => {
+            switch(type) {
+                case 'twitter': return 'text-blue-400 hover:text-blue-500 bg-blue-50 hover:bg-blue-100';
+                case 'instagram': return 'text-pink-500 hover:text-pink-600 bg-pink-50 hover:bg-pink-100';
+                case 'discord': return 'text-indigo-500 hover:text-indigo-600 bg-indigo-50 hover:bg-indigo-100';
+                case 'youtube': return 'text-red-500 hover:text-red-600 bg-red-50 hover:bg-red-100';
+                case 'tiktok': return 'text-gray-800 hover:text-black bg-gray-100 hover:bg-gray-200';
+                default: return 'text-gray-600 hover:text-gray-800 bg-gray-50 hover:bg-gray-100';
+            }
+        };
+
+        return (
+            <a 
+                href={getUrl()} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                title={`${type}: ${handle}`}
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${getColor()}`}
+            >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">{getIcon()}</svg>
+            </a>
+        );
+    };
 
     return (
         <div className="max-w-6xl mx-auto mb-12">
@@ -308,16 +390,16 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                                     <div className="flex items-center gap-2">
                                         <h1 className="text-2xl font-bold text-gray-900">{displayName}</h1>
                                         {user.role === 'SELLER' && (user.isVerifiedSeller || sellerStats.trustScore > 90) && (
-                                            <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-200 uppercase tracking-wide flex items-center gap-1">
+                                            <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-200 uppercase tracking-wide flex items-center gap-1" title="Verified Seller">
                                                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                                                Verified Seller
+                                                Verified
                                             </span>
                                         )}
                                     </div>
                                 )}
                                 <div className="flex flex-col mt-1">
                                     <div className="flex items-center text-sm text-gray-500">
-                                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                        <svg className="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                                         {isEditing ? (
                                             <div className="flex items-center gap-2">
                                                 <input 
@@ -368,22 +450,35 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                             </div>
                         </div>
                         
-                        {isOwnProfile && !isEditing && (
-                            <div className="flex gap-2">
-                                 <button 
-                                    onClick={handleLogout}
-                                    className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                                >
-                                    Log Out
-                                </button>
+                        <div className="flex gap-2">
+                            {isOwnProfile && !isEditing && (
+                                <>
+                                    <button 
+                                        onClick={handleLogout}
+                                        className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                    >
+                                        Log Out
+                                    </button>
+                                    <button 
+                                        onClick={() => setIsEditing(true)}
+                                        className="px-4 py-2 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700 shadow-sm transition-colors"
+                                    >
+                                        Edit Profile
+                                    </button>
+                                </>
+                            )}
+                            
+                            {/* ADMIN ACTION: Verify Seller */}
+                            {currentUser?.isAdmin && !user.isVerifiedSeller && user.role === 'SELLER' && (
                                 <button 
-                                    onClick={() => setIsEditing(true)}
-                                    className="px-4 py-2 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700 shadow-sm transition-colors"
+                                    onClick={handleAdminVerifySeller}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 shadow-sm transition-colors"
                                 >
-                                    Edit Profile
+                                    Verify Seller
                                 </button>
-                            </div>
-                        )}
+                            )}
+                        </div>
+
                         {isEditing && (
                              <div className="flex gap-2">
                                 <button 
@@ -391,6 +486,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                                         setIsEditing(false); 
                                         setName(user.displayName || user.name); 
                                         setBio(user.bio || ''); 
+                                        setSellerAbout(user.sellerAbout || '');
                                         setLocation(user.location || ''); 
                                         setIsLocationVerified(user.isLocationVerified || false);
                                         setPreferredView(user.preferredAppMode || AppMode.COMBINED);
@@ -400,7 +496,9 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                                             twitter: user.socialLinks?.twitter || '',
                                             instagram: user.socialLinks?.instagram || '',
                                             discord: user.socialLinks?.discord || '',
-                                            youtube: user.socialLinks?.youtube || ''
+                                            youtube: user.socialLinks?.youtube || '',
+                                            tiktok: user.socialLinks?.tiktok || '',
+                                            website: user.socialLinks?.website || ''
                                         });
                                         setIsVerified(user.isVerifiedSeller || false); 
                                         setLocationData(null); 
@@ -423,47 +521,55 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                     {/* Bio Section */}
                     <div className="mb-6 max-w-3xl">
                         {isEditing ? (
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">About</label>
-                                <textarea 
-                                    value={bio} 
-                                    onChange={e => setBio(e.target.value)}
-                                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
-                                    rows={3}
-                                    placeholder="Tell the community about your collection journey..."
-                                />
+                            <div className="space-y-4">
+                                <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                        <label className="block text-xs font-bold text-gray-500 uppercase">Short Bio</label>
+                                        <span className={`text-[10px] ${bio.length > BIO_LIMIT * 0.9 ? 'text-red-500' : 'text-gray-400'}`}>
+                                            {bio.length}/{BIO_LIMIT}
+                                        </span>
+                                    </div>
+                                    <textarea 
+                                        value={bio} 
+                                        onChange={e => setBio(e.target.value)}
+                                        maxLength={BIO_LIMIT}
+                                        className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none resize-none"
+                                        rows={3}
+                                        placeholder="Brief introduction about you or your collection..."
+                                    />
+                                </div>
+                                {user.role === 'SELLER' && (
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">About the Shop (Detailed)</label>
+                                        <textarea 
+                                            value={sellerAbout} 
+                                            onChange={e => setSellerAbout(e.target.value)}
+                                            className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+                                            rows={6}
+                                            placeholder="Detailed description of your shop, history, and policies..."
+                                        />
+                                    </div>
+                                )}
                             </div>
                         ) : (
-                            <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
-                                {user.bio || <span className="text-gray-400 italic">No bio provided.</span>}
-                            </p>
+                            <div className="space-y-6">
+                                <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
+                                    {user.bio || <span className="text-gray-400 italic">No bio provided.</span>}
+                                </p>
+                                {user.role === 'SELLER' && user.sellerAbout && (
+                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                        <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">About the Shop</h3>
+                                        <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
+                                            {user.sellerAbout}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
 
                     {/* Account Status / Banners */}
                     <div className="space-y-4 mb-8">
-                        {/* Suspension Banner (Prominent) */}
-                        {isSuspended && (
-                            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm animate-pulse-slow">
-                                <div className="flex items-start gap-3">
-                                    <div className="p-2 bg-red-100 rounded-full text-red-600">
-                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <h3 className="text-red-800 font-bold text-lg">Account Suspended</h3>
-                                        <p className="text-red-700 mt-1 font-medium">
-                                            {user.suspensionReason || 'Violation of Terms of Service'}
-                                        </p>
-                                        <p className="text-red-600 text-sm mt-2">
-                                            Suspension active until: <span className="font-bold">{formatLocalTime(user.suspensionUntil)}</span>
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
                         {/* Email Verification Banner */}
                         {isOwnProfile && !user.isEmailVerified && !isSuspended && (
                             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg shadow-sm">
@@ -492,23 +598,38 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                         {/* Left Column: Seller Card Stats & Role */}
                         <div className="md:col-span-1 space-y-6">
-                            <div className={`bg-gray-50 p-4 rounded-lg border ${user.role === 'SELLER' ? 'border-primary-100 ring-1 ring-primary-50' : 'border-gray-100'}`}>
-                                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Account Status</h3>
+                            <div className={`bg-gray-50 p-4 rounded-lg border ${user.role === 'SELLER' ? 'border-primary-100 ring-1 ring-primary-50' : 'border-gray-100'} relative overflow-hidden`}>
+                                 {/* Verified Badge Absolute */}
+                                 {user.isVerifiedSeller && !isSuspended && (
+                                     <div className="absolute top-0 right-0 bg-blue-600 text-white text-[9px] font-bold px-2 py-1 rounded-bl-lg shadow-sm flex items-center gap-1">
+                                         VERIFIED
+                                     </div>
+                                 )}
+
+                                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Profile Card</h3>
                                  
-                                 <div className="flex justify-between items-center mb-3 pb-3 border-b border-gray-100">
-                                    <span className="text-gray-600 text-sm">Status</span>
-                                    <div className="flex flex-col items-end gap-1">
+                                 {/* Account Status with Reason */}
+                                 <div className="mb-4 bg-white p-3 rounded border border-gray-100">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="text-gray-500 text-xs uppercase font-bold">Status</span>
                                         {isSuspended ? (
-                                            <span className="bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-full">SUSPENDED</span>
+                                            <span className="text-red-600 text-xs font-bold flex items-center gap-1">
+                                                SUSPENDED
+                                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                                            </span>
                                         ) : (
-                                            <span className="bg-green-100 text-green-800 text-[10px] font-bold px-2 py-0.5 rounded-full">ACTIVE</span>
-                                        )}
-                                        {user.isVerifiedSeller && !isSuspended && (
-                                            <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-blue-100">
-                                                Verified Seller <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                                            <span className="text-green-600 text-xs font-bold flex items-center gap-1">
+                                                ACTIVE
+                                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
                                             </span>
                                         )}
                                     </div>
+                                    {isSuspended && user.suspensionReason && (
+                                        <div className="text-xs text-red-500 bg-red-50 p-2 rounded mt-1 border border-red-100 italic">
+                                            Reason: {user.suspensionReason}
+                                            {user.suspensionUntil && <div className="mt-1 font-semibold not-italic">Until: {formatLocalTime(user.suspensionUntil)}</div>}
+                                        </div>
+                                    )}
                                  </div>
 
                                  <div className="flex justify-between items-center mb-2">
@@ -518,17 +639,8 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                                     </span>
                                  </div>
 
-                                 {isOwnProfile && user.role === 'BUYER' && !isEditing && (
-                                    <button 
-                                        onClick={handleBecomeSeller}
-                                        className="w-full mt-2 mb-3 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold py-2 rounded-md transition-colors shadow-sm"
-                                    >
-                                        Become a Seller
-                                    </button>
-                                 )}
-
                                  {/* Preferred App Mode Setting */}
-                                 <div className="flex justify-between items-center mb-2">
+                                 <div className="flex justify-between items-center mb-4">
                                     <span className="text-gray-600 text-sm">Default View</span>
                                     {isEditing ? (
                                         <select 
@@ -547,6 +659,24 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                                     )}
                                  </div>
 
+                                 {/* Social Links Row */}
+                                 {!isEditing && (
+                                     <div className="border-t border-gray-200 pt-4 mb-4">
+                                         <div className="flex justify-center items-center gap-3">
+                                             {user.socialLinks?.twitter && renderSocialIcon('twitter', user.socialLinks.twitter)}
+                                             {user.socialLinks?.instagram && renderSocialIcon('instagram', user.socialLinks.instagram)}
+                                             {user.socialLinks?.discord && renderSocialIcon('discord', user.socialLinks.discord)}
+                                             {user.socialLinks?.youtube && renderSocialIcon('youtube', user.socialLinks.youtube)}
+                                             {user.socialLinks?.tiktok && renderSocialIcon('tiktok', user.socialLinks.tiktok)}
+                                             {user.socialLinks?.website && renderSocialIcon('website', user.socialLinks.website)}
+                                             {/* Fallback if no socials */}
+                                             {!user.socialLinks?.twitter && !user.socialLinks?.instagram && !user.socialLinks?.discord && !user.socialLinks?.youtube && !user.socialLinks?.tiktok && !user.socialLinks?.website && (
+                                                 <span className="text-xs text-gray-400 italic">No social links added</span>
+                                             )}
+                                         </div>
+                                     </div>
+                                 )}
+
                                  <div className="flex justify-between items-center mb-2">
                                     <span className="text-gray-600 text-sm">Joined</span>
                                     <span className="text-gray-900 text-sm font-medium">
@@ -560,13 +690,32 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                                     </span>
                                  </div>
                                  {isOwnProfile && (
-                                     <button 
-                                        onClick={handleTopUp}
-                                        className="w-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 text-xs font-bold py-2 rounded-md transition-colors flex items-center justify-center gap-1"
-                                     >
-                                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                                         Deposit Funds
-                                     </button>
+                                     <>
+                                        <button 
+                                            onClick={handleTopUp}
+                                            className="w-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 text-xs font-bold py-2 rounded-md transition-colors flex items-center justify-center gap-1 mb-2"
+                                        >
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                            Deposit Funds
+                                        </button>
+                                        {!isEditing && (
+                                            user.role === 'BUYER' ? (
+                                                <button 
+                                                    onClick={handleBecomeSeller}
+                                                    className="w-full bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold py-2 rounded-md transition-colors shadow-sm"
+                                                >
+                                                    Become a Seller
+                                                </button>
+                                            ) : (
+                                                <button 
+                                                    onClick={handleSwitchToBuyer}
+                                                    className="w-full bg-white border border-gray-300 text-gray-600 hover:bg-gray-50 text-xs font-bold py-2 rounded-md transition-colors"
+                                                >
+                                                    Switch to Buyer Role
+                                                </button>
+                                            )
+                                        )}
+                                     </>
                                  )}
                             </div>
 
@@ -619,10 +768,10 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                                 )}
                             </div>
 
-                            {/* Social Links Section */}
-                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
-                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Social Presence</h3>
-                                {isEditing ? (
+                            {/* Social Links Edit Form (Only visible when editing) */}
+                            {isEditing && (
+                                <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Edit Socials</h3>
                                     <div className="space-y-2">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs text-blue-400 font-bold w-16">Twitter</span>
@@ -660,34 +809,25 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                                                 placeholder="@channel"
                                             />
                                         </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-black font-bold w-16">TikTok</span>
+                                            <input 
+                                                value={socials.tiktok} 
+                                                onChange={e => setSocials({...socials, tiktok: e.target.value})}
+                                                className="text-xs border rounded p-1 flex-1"
+                                                placeholder="@handle"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-gray-600 font-bold w-16">Website</span>
+                                            <input 
+                                                value={socials.website} 
+                                                onChange={e => setSocials({...socials, website: e.target.value})}
+                                                className="text-xs border rounded p-1 flex-1"
+                                                placeholder="URL"
+                                            />
+                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {user.socialLinks?.twitter && (
-                                            <a href={`https://twitter.com/${user.socialLinks.twitter}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-gray-700 hover:text-blue-500">
-                                                <svg className="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
-                                                @{user.socialLinks.twitter}
-                                            </a>
-                                        )}
-                                        {user.socialLinks?.instagram && (
-                                            <a href={`https://instagram.com/${user.socialLinks.instagram}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-gray-700 hover:text-pink-500">
-                                                <svg className="w-4 h-4 text-pink-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.069-4.85.069-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-                                            </a>
-                                        )}
-                                        {user.socialLinks?.discord && (
-                                            <div className="text-gray-400 hover:text-indigo-500 transition-colors cursor-help" title={user.socialLinks.discord}>
-                                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028 14.09 14.09 0 001.226-1.994.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.956 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.946 2.419-2.157 2.419z"/></svg>
-                                            </div>
-                                        )}
-                                        {user.socialLinks?.youtube && (
-                                            <a href={`https://youtube.com/@${user.socialLinks.youtube}`} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-red-600 transition-colors">
-                                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-                                            </a>
-                                        )}
-                                    </div>
-                                )}
-
-                                {isEditing && (
                                     <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-2">
                                         <label className="flex items-center gap-2 cursor-pointer">
                                             <input 
@@ -699,8 +839,8 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user, isOwnProfile }) 
                                             <span className="text-sm font-medium text-gray-700">Verified Seller Status (Mock)</span>
                                         </label>
                                     </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Right Column: Transaction History / Main Content */}

@@ -1,4 +1,5 @@
 
+
 export enum ListingType {
   DIRECT_SALE = 'DIRECT_SALE',
   AUCTION = 'AUCTION',
@@ -112,6 +113,23 @@ export enum SortOption {
   PRICE_DESC = 'PRICE_DESC',
   MOST_BIDS = 'MOST_BIDS',
   ENDING_SOON = 'ENDING_SOON'
+}
+
+export interface FilterState {
+  searchQuery: string;
+  searchScope: SearchScope;
+  priceRange: { min: number | null; max: number | null };
+  pokemonTypes: PokemonType[];
+  cardCategories: CardCategory[];
+  variantTags: VariantTag[];
+  condition: Condition[];
+  gradingCompany: GradingCompany[];
+  sealedProductType: SealedProductType[];
+  breakStatus: BreakStatus[];
+  pokemonName: string;
+  language: string;
+  series: string;
+  set: string;
 }
 
 // --- Payment Models (Stubs for Stripe) ---
@@ -361,6 +379,21 @@ export interface WaitlistEntry {
   joinedAt: Date;
 }
 
+export interface OnboardingState {
+    step: number;
+    completedAt?: Date;
+    skipped: boolean;
+}
+
+export interface SocialLinks {
+    twitter?: string;
+    instagram?: string;
+    discord?: string;
+    youtube?: string;
+    tiktok?: string;
+    website?: string;
+}
+
 export interface User {
   id: string;
   name: string; // Login/System Name
@@ -373,16 +406,25 @@ export interface User {
   avatarUrl?: string; 
   coverImageUrl?: string; 
   bio?: string;
+  sellerAbout?: string; // Detailed About Me for Sellers
   location?: string;
   isLocationVerified?: boolean;
+  socialLinks?: SocialLinks;
   
   // Status Fields
   isEmailVerified?: boolean;
   isVerifiedSeller?: boolean; // Trusted Seller Status
+  isAdmin?: boolean; // NEW: Admin Role
   
   // Account Metadata
   joinedAt: Date;
   preferredAppMode?: AppMode;
+
+  // Onboarding Status
+  onboarding?: {
+      buyer?: OnboardingState;
+      seller?: OnboardingState;
+  };
 
   // Moderation
   suspensionReason?: string;
@@ -394,14 +436,6 @@ export interface User {
       pokemon?: string[]; 
       sets?: string[];    
       types?: PokemonType[];
-  };
-
-  // Social
-  socialLinks?: {
-    twitter?: string;
-    instagram?: string;
-    discord?: string;
-    youtube?: string;
   };
 
   // Deprecated / Compat fields (to avoid breaking existing constants/mocks)
@@ -593,4 +627,16 @@ export interface IdentificationResult {
   // Stage 2 Output
   candidates: CardCandidate[];
   feedback?: string;
+}
+
+// --- Moderation Types ---
+export interface Report {
+  id: string;
+  reporterId: string;
+  reporterName: string;
+  reportedEntityId: string;
+  entityType: 'USER' | 'LISTING' | 'THREAD' | 'COMMENT';
+  reason: string;
+  status: 'PENDING' | 'RESOLVED' | 'DISMISSED';
+  createdAt: Date;
 }

@@ -144,7 +144,6 @@ const ParticipantsList: React.FC<{ listing: Listing, isOwner: boolean, currentUs
     const { getBreakEntries, removeBreakEntry } = useStore();
     if (!listing?.id) return null;
     
-    // Defensive empty array fallback
     const entries = getBreakEntries(listing.id) || [];
     
     if (listing.type !== ListingType.TIMED_BREAK) return null;
@@ -294,55 +293,134 @@ const LocationGrounding: React.FC<{ location: string }> = ({ location }) => {
     );
 };
 
+const ReportIssueModal: React.FC<{ isOpen: boolean, onClose: () => void, onSubmit: (reason: string) => void }> = ({ isOpen, onClose, onSubmit }) => {
+    const [reason, setReason] = useState('');
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl animate-fade-in-up">
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Report Issue</h3>
+                <p className="text-sm text-gray-500 mb-4">Please describe the issue with this break result (e.g., missing items, incorrect winner).</p>
+                <textarea
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none"
+                    rows={4}
+                    placeholder="Describe the issue..."
+                    value={reason}
+                    onChange={e => setReason(e.target.value)}
+                />
+                <div className="flex justify-end gap-3 mt-4">
+                    <button onClick={onClose} className="text-gray-600 font-medium text-sm hover:bg-gray-100 px-4 py-2 rounded-lg">Cancel</button>
+                    <button
+                        onClick={() => { onSubmit(reason); onClose(); setReason(''); }}
+                        disabled={!reason.trim()}
+                        className="bg-red-600 hover:bg-red-700 text-white font-bold text-sm px-4 py-2 rounded-lg disabled:opacity-50"
+                    >
+                        Submit Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ResultsTab: React.FC<{ 
     listing: Listing, 
     isOwner: boolean, 
     onComplete: (media: string[], notes: string) => void 
 }> = ({ listing, isOwner, onComplete }) => {
+    const { submitReport } = useStore();
     const [notes, setNotes] = useState('');
     const [media, setMedia] = useState<string[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showReportModal, setShowReportModal] = useState(false);
     
+    // 1. Completed View (Public/Buyer)
     if (listing.breakStatus === BreakStatus.COMPLETED) {
         return (
-            <div className="space-y-4">
-                <div className="bg-green-50 p-4 rounded-xl border border-green-200">
-                    <h3 className="font-bold text-green-900 mb-2">Break Results</h3>
-                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{listing.resultsNotes || "No notes provided."}</p>
+            <div className="space-y-6 animate-fade-in-up">
+                <div className="bg-green-50 p-6 rounded-xl border border-green-200">
+                    <h3 className="font-bold text-green-900 mb-3 text-lg flex items-center gap-2">
+                        <span className="text-xl">✅</span> Break Results
+                    </h3>
+                    {listing.resultsNotes ? (
+                        <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">{listing.resultsNotes}</p>
+                    ) : (
+                        <p className="text-gray-500 italic">No recap notes provided.</p>
+                    )}
                 </div>
+
                 {listing.resultsMedia && listing.resultsMedia.length > 0 && (
-                    <div className="grid grid-cols-2 gap-4">
-                        {listing.resultsMedia.map((m, i) => (
-                            <img key={i} src={m} className="rounded-lg border border-gray-200 shadow-sm w-full" alt="Result" />
-                        ))}
+                    <div>
+                        <h4 className="font-bold text-gray-900 mb-3">Hits & Highlights</h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                            {listing.resultsMedia.map((m, i) => (
+                                <div key={i} className="aspect-square bg-gray-100 rounded-lg overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer group relative">
+                                    <img src={m} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={`Result ${i + 1}`} />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Report for Buyers */}
+                {!isOwner && (
+                    <div className="pt-6 border-t border-gray-100">
+                        <button 
+                            onClick={() => setShowReportModal(true)}
+                            className="text-xs text-red-500 font-bold hover:text-red-700 flex items-center gap-1 hover:underline"
+                        >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                            Report Issue with Result
+                        </button>
+                        <ReportIssueModal 
+                            isOpen={showReportModal} 
+                            onClose={() => setShowReportModal(false)}
+                            onSubmit={(reason) => {
+                                submitReport(listing.id, 'LISTING', reason);
+                                alert("Report submitted to moderation team.");
+                            }}
+                        />
                     </div>
                 )}
             </div>
         );
     }
 
+    // 2. Live Host View (Form)
     if (isOwner && listing.breakStatus === BreakStatus.LIVE) {
         return (
-            <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                <h3 className="font-bold text-gray-900 mb-4">Post Break Results & Complete</h3>
-                <div className="space-y-4">
+            <div className="bg-white p-6 rounded-xl border-2 border-indigo-100 shadow-sm animate-fade-in-up">
+                <div className="flex items-center gap-3 mb-6 pb-4 border-b border-indigo-50">
+                    <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                    </div>
                     <div>
-                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Recap Notes</label>
+                        <h3 className="font-bold text-gray-900 text-lg">Finalize Break</h3>
+                        <p className="text-sm text-gray-500">Document hits and close the session.</p>
+                    </div>
+                </div>
+
+                <div className="space-y-6">
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Recap Notes</label>
                         <textarea 
-                            className="w-full border border-gray-300 rounded-lg p-3 text-sm" 
-                            rows={3} 
-                            placeholder="Summary of top hits, winner of the bounty, etc."
+                            className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow" 
+                            rows={4} 
+                            placeholder="Summarize the top pulls, mention the wheel winner, etc."
                             value={notes}
                             onChange={e => setNotes(e.target.value)}
                         />
                     </div>
+                    
                     <div>
-                        <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Upload Hit Photos (Optional)</label>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Upload Hit Photos</label>
                         <div className="flex items-center justify-center w-full">
-                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-xl cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
                                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                                    <p className="mb-2 text-sm text-gray-500"><span className="font-semibold">Click to upload</span></p>
+                                    <svg className="w-8 h-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                    <p className="text-sm text-gray-500 font-medium">Click to upload photos</p>
+                                    <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 10MB</p>
                                 </div>
                                 <input type="file" className="hidden" multiple accept="image/*" onChange={(e) => {
                                     if(e.target.files) {
@@ -355,32 +433,66 @@ const ResultsTab: React.FC<{
                                 }} />
                             </label>
                         </div>
+                        
+                        {/* Preview Grid */}
                         {media.length > 0 && (
-                            <div className="flex gap-2 mt-2 overflow-x-auto">
+                            <div className="flex gap-3 mt-4 overflow-x-auto pb-2 scrollbar-thin">
                                 {media.map((m, i) => (
-                                    <img key={i} src={m} className="h-16 w-16 object-cover rounded border" />
+                                    <div key={i} className="relative w-20 h-20 shrink-0 group">
+                                        <img src={m} className="h-full w-full object-cover rounded-lg border border-gray-200" />
+                                        <button 
+                                            onClick={() => setMedia(prev => prev.filter((_, idx) => idx !== i))}
+                                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
                                 ))}
                             </div>
                         )}
                     </div>
-                    <button 
-                        onClick={() => {
-                            if(confirm("End break and charge all participants?")) {
-                                setIsSubmitting(true);
-                                onComplete(media, notes);
-                            }
-                        }}
-                        disabled={isSubmitting}
-                        className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition-colors shadow-sm"
-                    >
-                        {isSubmitting ? 'Finalizing...' : 'Complete Break & Capture Payments'}
-                    </button>
+
+                    <div className="pt-4 border-t border-gray-100">
+                        <button 
+                            onClick={() => {
+                                if(confirm("Are you sure you want to end the break? This will charge all participants and mark the listing as completed.")) {
+                                    setIsSubmitting(true);
+                                    onComplete(media, notes);
+                                }
+                            }}
+                            disabled={isSubmitting}
+                            className="w-full bg-green-600 text-white font-bold py-3.5 rounded-xl hover:bg-green-700 transition-all shadow-lg hover:shadow-xl transform active:scale-[0.99] flex items-center justify-center gap-2"
+                        >
+                            {isSubmitting ? (
+                                <>
+                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    Processing...
+                                </>
+                            ) : (
+                                'Complete Break & Capture Payments'
+                            )}
+                        </button>
+                        <p className="text-center text-xs text-gray-400 mt-3">
+                            This action is irreversible. Funds will be released to your wallet.
+                        </p>
+                    </div>
                 </div>
             </div>
         );
     }
 
-    return <div className="text-center text-gray-500 py-8 italic">Results will be posted after the break concludes.</div>;
+    // 3. Waiting State
+    return (
+        <div className="flex flex-col items-center justify-center py-12 px-4 bg-gray-50 rounded-xl border border-dashed border-gray-300 text-center">
+            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-4 text-3xl shadow-sm border border-gray-100">
+                📊
+            </div>
+            <h3 className="text-gray-900 font-bold mb-1">Results Pending</h3>
+            <p className="text-gray-500 text-sm max-w-xs mx-auto">
+                Break results, photos, and recap notes will be posted here by the host after the stream concludes.
+            </p>
+        </div>
+    );
 };
 
 export const ListingDetailView: React.FC<ListingDetailViewProps> = ({ 
@@ -393,19 +505,26 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
 }) => {
     if (!listing) return <div className="p-8 text-center text-gray-500">Listing not available</div>;
 
-    const { getBidsByListingId, getRelatedListings, scheduleBreak, startBreak, completeBreak, cancelBreak, joinWaitlist } = useStore();
+    const { getBidsByListingId, getRelatedListings, scheduleBreak, startBreak, completeBreak, cancelBreak, joinWaitlist, getBreakEntries, getWaitlistPosition } = useStore();
     
-    // Safe accessors for lists that might be missing in partial data
+    // ... existing logic ...
     const bids = useMemo(() => getBidsByListingId(listing.id) || [], [listing.id, getBidsByListingId]);
     const related = useMemo(() => getRelatedListings(listing) || [], [listing, getRelatedListings]);
     
     const [scheduleDate, setScheduleDate] = useState<string>('');
     const [streamLink, setStreamLink] = useState<string>('https://twitch.tv/pokevault_official');
     const [isScheduling, setIsScheduling] = useState(false);
-    const [isJoining, setIsJoining] = useState(false); // New Loading State
+    const [isJoining, setIsJoining] = useState(false);
     const [apiCard, setApiCard] = useState<any>(null);
 
-    // Fetch API Data if ID exists
+    const breakEntries = useMemo(() => getBreakEntries(listing.id) || [], [listing.id, getBreakEntries]);
+    const userEntriesCount = breakEntries.filter(e => e.userId === currentUser?.id).length;
+    const maxEntries = listing.maxEntriesPerUser || 999;
+    const isEntryLimitReached = userEntriesCount >= maxEntries;
+    
+    const isFull = (listing.currentParticipants || 0) >= (listing.targetParticipants || 0);
+    const waitlistPos = getWaitlistPosition(listing.id);
+
     useEffect(() => {
         const loadApiData = async () => {
             if (listing.tcgCardId) {
@@ -421,7 +540,6 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
     const isBreak = listing.type === ListingType.TIMED_BREAK;
     const isEnded = listing.isSold || (isBreak && (listing.breakStatus === BreakStatus.COMPLETED || listing.breakStatus === BreakStatus.CANCELLED));
 
-    // Determine target date and label for Countdown
     let targetDate: Date | undefined;
     let timerLabel = '';
     
@@ -444,21 +562,18 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
         if (isNaN(date.getTime())) return alert("Invalid date");
         if (date < new Date()) return alert("Schedule date must be in the future.");
         
-        const res = scheduleBreak(listing.id, date, streamLink);
-        if (res.success) {
+        setIsScheduling(true);
+        setTimeout(() => {
+            const res = scheduleBreak(listing.id, date, streamLink);
             setIsScheduling(false);
-            alert(res.message);
-        } else {
-            alert(res.message);
-        }
+            if (!res.success) alert(res.message);
+        }, 500);
     };
 
     const handleInteractWrapper = async (action: 'BUY' | 'BID' | 'CHAT' | 'MANAGE') => {
         if (action === 'BUY' && isBreak) {
             setIsJoining(true);
             try {
-                // onInteract in parent handles logic, but it's sync usually. 
-                // We wrap to ensure loading state shows if parent op is slow.
                 await onInteract(listing, action);
             } finally {
                 setIsJoining(false);
@@ -483,25 +598,46 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                     </button>
                 );
             }
-            if (listing.breakStatus === BreakStatus.FULL_PENDING_SCHEDULE || listing.breakStatus === BreakStatus.SCHEDULED) {
+            if (isFull || listing.breakStatus === BreakStatus.FULL_PENDING_SCHEDULE) {
                 return (
                     <div className="space-y-3">
-                        <div className="w-full py-4 bg-gray-100 text-gray-500 font-bold rounded-xl text-center">Wait for Stream</div>
-                        <button 
-                            onClick={handleWaitlist}
-                            className="w-full py-2 border border-gray-300 text-gray-600 font-bold rounded-xl hover:bg-gray-50 text-sm transition-colors"
-                        >
-                            Join Waitlist
-                        </button>
+                        <div className="w-full py-4 bg-gray-100 text-gray-500 font-bold rounded-xl text-center flex flex-col justify-center items-center border border-gray-200">
+                            <span>Sold Out</span>
+                            {waitlistPos > -1 && <span className="text-xs text-blue-600 font-medium">You are #{waitlistPos} on waitlist</span>}
+                        </div>
+                        {waitlistPos === -1 && (
+                            <button 
+                                onClick={handleWaitlist}
+                                className="w-full py-3 border-2 border-blue-100 text-blue-600 font-bold rounded-xl hover:bg-blue-50 text-sm transition-colors"
+                            >
+                                Join Waitlist
+                            </button>
+                        )}
+                        {listing.breakStatus === BreakStatus.SCHEDULED && (
+                             <div className="text-sm text-center text-purple-700 bg-purple-50 p-2 rounded-lg font-bold mt-1 border border-purple-100">
+                                 📅 Stream Scheduled: <br/>{formatSmartDate(listing.scheduledLiveAt)}
+                             </div>
+                        )}
                     </div>
                 );
             }
             if (listing.breakStatus === BreakStatus.OPEN) {
+                if (isEntryLimitReached) {
+                    return (
+                        <button 
+                            disabled
+                            className="w-full py-4 bg-gray-200 text-gray-500 font-bold rounded-xl cursor-not-allowed border border-gray-300"
+                        >
+                            Max Entries Reached ({userEntriesCount}/{maxEntries})
+                        </button>
+                    );
+                }
+
                 return (
                     <button 
                         onClick={() => handleInteractWrapper('BUY')} 
                         disabled={isJoining}
-                        className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-bold rounded-xl shadow-lg transition-all transform hover:-translate-y-1 disabled:transform-none disabled:cursor-not-allowed"
+                        className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-bold rounded-xl shadow-lg transition-all transform hover:-translate-y-1 disabled:transform-none disabled:cursor-not-allowed border border-purple-800"
                     >
                         {isJoining ? 'Securing Spot...' : `Join Break • $${listing.price}`}
                     </button>
@@ -511,43 +647,59 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
         } else {
             if (listing.breakStatus === BreakStatus.FULL_PENDING_SCHEDULE) {
                 return (
-                    <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-200 space-y-3">
-                        <h4 className="font-bold text-indigo-900 mb-2">Break is Full! Schedule Now</h4>
-                        <div>
-                            <label className="block text-xs text-indigo-800 font-bold mb-1">Start Time</label>
-                            <input 
-                                type="datetime-local" 
-                                className="w-full p-2 border border-indigo-200 rounded text-sm"
-                                onChange={(e) => setScheduleDate(e.target.value)}
-                            />
+                    <div className="bg-indigo-50 p-5 rounded-xl border border-indigo-200 shadow-sm space-y-4 animate-fade-in-up">
+                        <div className="flex items-center gap-2 text-indigo-900 font-bold">
+                            <span className="text-xl">📅</span>
+                            <h4>Break Full! Schedule Stream</h4>
                         </div>
-                        <div>
-                            <label className="block text-xs text-indigo-800 font-bold mb-1">Stream Link (Twitch/YouTube)</label>
-                            <input 
-                                type="text"
-                                value={streamLink}
-                                onChange={(e) => setStreamLink(e.target.value)}
-                                className="w-full p-2 border border-indigo-200 rounded text-sm"
-                                placeholder="https://twitch.tv/..."
-                            />
+                        
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs text-indigo-800 font-bold mb-1 uppercase">Start Time</label>
+                                <input 
+                                    type="datetime-local" 
+                                    className="w-full p-2.5 border border-indigo-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    onChange={(e) => setScheduleDate(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-indigo-800 font-bold mb-1 uppercase">Stream Link</label>
+                                <input 
+                                    type="text"
+                                    value={streamLink}
+                                    onChange={(e) => setStreamLink(e.target.value)}
+                                    className="w-full p-2.5 border border-indigo-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    placeholder="https://twitch.tv/..."
+                                />
+                            </div>
+                            <button 
+                                onClick={handleSchedule} 
+                                disabled={isScheduling}
+                                className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-md active:scale-95 disabled:opacity-70"
+                            >
+                                {isScheduling ? 'Scheduling...' : 'Confirm Schedule & Notify'}
+                            </button>
                         </div>
-                        <button onClick={handleSchedule} className="w-full py-2 bg-indigo-600 text-white font-bold rounded hover:bg-indigo-700">
-                            Confirm Schedule
-                        </button>
                     </div>
                 );
             }
             if (listing.breakStatus === BreakStatus.SCHEDULED) {
                 return (
-                    <button onClick={() => { startBreak(listing.id); if(onWatchLive) onWatchLive(listing); }} className="w-full py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg">
-                        Start Stream & Go Live
-                    </button>
+                    <div className="space-y-3">
+                        <div className="bg-green-50 p-3 rounded-lg border border-green-200 text-center">
+                            <span className="block text-xs font-bold text-green-800 uppercase mb-1">Scheduled For</span>
+                            <span className="font-bold text-green-900 text-lg">{formatSmartDate(listing.scheduledLiveAt)}</span>
+                        </div>
+                        <button onClick={() => { startBreak(listing.id); if(onWatchLive) onWatchLive(listing); }} className="w-full py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg border border-green-800 transform transition-transform active:scale-95">
+                            Start Stream & Go Live 🔴
+                        </button>
+                    </div>
                 );
             }
             if (listing.breakStatus === BreakStatus.LIVE) {
                 return (
-                    <button onClick={() => onWatchLive && onWatchLive(listing)} className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg animate-pulse">
-                        Enter Host Console
+                    <button onClick={() => onWatchLive && onWatchLive(listing)} className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg animate-pulse border border-red-800">
+                        Enter Host Console 🎙️
                     </button>
                 );
             }
@@ -615,6 +767,7 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
 
                 <div className="lg:col-span-5 space-y-6">
                     <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm sticky top-24">
+                        {/* ... Sidebar Content ... */}
                         <div className="flex justify-between items-start mb-4">
                             <div>
                                 <h1 className="text-2xl font-extrabold text-gray-900 leading-tight">{listing.title}</h1>
@@ -647,7 +800,6 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                                     <Countdown targetDate={targetDate} label={timerLabel} className="text-sm font-bold" />
                                 </div>
                             )}
-                            {/* Display Absolute Local Time for clarity */}
                             {targetDate && !isEnded && (
                                 <div className="mt-1 text-xs text-gray-400 font-medium pl-1">
                                     {formatLocalTime(targetDate)}

@@ -37,16 +37,35 @@ export const cropImageCorners = async (base64Image: string): Promise<{ leftCorne
     });
 };
 
+// Helper to order points as TL, TR, BR, BL
+function orderPoints(pts: {x:number, y:number}[]) {
+    // Sort by Y to find top 2 and bottom 2
+    pts.sort((a,b) => a.y - b.y);
+    
+    // Grab top 2 and sort by X to get TL, TR
+    const top = pts.slice(0, 2).sort((a,b) => a.x - b.x); 
+    const tl = top[0];
+    const tr = top[1];
+    
+    // Grab bottom 2 and sort by X to get BL, BR
+    // Note: Standard perspective transform expects TL, TR, BR, BL order
+    const bottom = pts.slice(2, 4).sort((a,b) => a.x - b.x);
+    const bl = bottom[0];
+    const br = bottom[1];
+    
+    return [tl, tr, br, bl];
+}
+
 /**
- * Automagically crops the image to the card boundaries using OpenCV.js.
- * Falls back to original image if OpenCV is not loaded or detection fails.
+ * Automagically crops the image to the card boundaries using OpenCV.js with Perspective Transform.
+ * Returns null if no card is reliably detected, signaling a fallback to manual crop.
  */
-export const autoCropCard = async (base64Image: string): Promise<string> => {
+export const autoCropCard = async (base64Image: string): Promise<string | null> => {
     return new Promise((resolve) => {
         // @ts-ignore
-        if (typeof window === 'undefined' || !window.cv) {
-            console.warn("OpenCV not loaded, skipping auto-crop");
-            return resolve(base64Image);
+        if (typeof window === 'undefined' || !window.cv || !window.cvLoaded) {
+            console.warn("OpenCV not ready, skipping auto-crop");
+            return resolve(null);
         }
 
         const img = new Image();
@@ -55,8 +74,20 @@ export const autoCropCard = async (base64Image: string): Promise<string> => {
                 // @ts-ignore
                 const cv = window.cv;
                 const src = cv.imread(img);
+                
+                // Downscale for processing speed
+                const dsize = new cv.Size(0, 0);
+                const scale = Math.min(800 / src.cols, 1); 
+                const dst = new cv.Mat();
+                
+                if (scale < 1) {
+                    cv.resize(src, dst, dsize, scale, scale, cv.INTER_AREA);
+                } else {
+                    src.copyTo(dst);
+                }
+
                 const gray = new cv.Mat();
-                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+                cv.cvtColor(dst, gray, cv.COLOR_RGBA2GRAY, 0);
                 
                 const blurred = new cv.Mat();
                 cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
@@ -74,39 +105,192 @@ export const autoCropCard = async (base64Image: string): Promise<string> => {
                 for (let i = 0; i < contours.size(); ++i) {
                     const cnt = contours.get(i);
                     const area = cv.contourArea(cnt);
-                    if (area > maxArea) {
+                    // Threshold: > 5% of image area
+                    if (area > (dst.cols * dst.rows * 0.05) && area > maxArea) {
                         maxArea = area;
                         maxContour = cnt;
                     }
                 }
 
-                // Threshold: Contour must cover at least 10% of the image to be considered a card
-                if (maxContour && maxArea > (src.cols * src.rows * 0.1)) {
-                    const rect = cv.boundingRect(maxContour);
-                    // Use Region of Interest (ROI) to crop
-                    const dst = src.roi(rect);
-                    
-                    const canvas = document.createElement('canvas');
-                    cv.imshow(canvas, dst);
-                    
-                    // Cleanup
-                    dst.delete();
-                    
-                    // Convert back to base64 (strip prefix)
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-                    resolve(dataUrl.split(',')[1]);
-                } else {
-                    resolve(base64Image);
+                let resultBase64: string | null = null;
+
+                if (maxContour) {
+                    const peri = cv.arcLength(maxContour, true);
+                    const approx = new cv.Mat();
+                    // Approximate polygon (0.02 epsilon is standard for rectangles)
+                    cv.approxPolyDP(maxContour, approx, 0.02 * peri, true);
+
+                    if (approx.rows === 4) {
+                        // Found a quad!
+                        const points = [];
+                        for(let i = 0; i < 4; i++) {
+                            points.push({
+                                x: approx.data32S[i * 2],
+                                y: approx.data32S[i * 2 + 1]
+                            });
+                        }
+
+                        // Scale points back to original image coords
+                        const scaledPoints = points.map(p => ({
+                            x: p.x / scale,
+                            y: p.y / scale
+                        }));
+
+                        // Sort points: TL, TR, BR, BL
+                        const [tl, tr, br, bl] = orderPoints(scaledPoints);
+
+                        // Calculate width/height for flattening
+                        const widthA = Math.hypot(br.x - bl.x, br.y - bl.y);
+                        const widthB = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+                        const maxWidth = Math.max(widthA, widthB);
+
+                        const heightA = Math.hypot(tr.x - br.x, tr.y - br.y);
+                        const heightB = Math.hypot(tl.x - bl.x, tl.y - bl.y);
+                        const maxHeight = Math.max(heightA, heightB);
+
+                        // Destination points (Flat Rectangle)
+                        const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                            0, 0,
+                            maxWidth - 1, 0,
+                            maxWidth - 1, maxHeight - 1,
+                            0, maxHeight - 1
+                        ]);
+
+                        // Source points
+                        const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                            tl.x, tl.y,
+                            tr.x, tr.y,
+                            br.x, br.y,
+                            bl.x, bl.y
+                        ]);
+
+                        // Perspective Warp
+                        const M = cv.getPerspectiveTransform(srcTri, dstTri);
+                        const warped = new cv.Mat();
+                        const dsizeWarp = new cv.Size(maxWidth, maxHeight);
+                        cv.warpPerspective(src, warped, M, dsizeWarp, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+                        // Render to canvas
+                        const canvas = document.createElement('canvas');
+                        cv.imshow(canvas, warped);
+                        resultBase64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+
+                        // Cleanup
+                        M.delete(); warped.delete(); srcTri.delete(); dstTri.delete();
+                    }
+                    approx.delete();
                 }
 
-                // Cleanup memory
-                src.delete(); gray.delete(); blurred.delete(); edges.delete(); contours.delete(); hierarchy.delete();
+                // Global cleanup
+                src.delete(); dst.delete(); gray.delete(); blurred.delete(); edges.delete(); 
+                contours.delete(); hierarchy.delete();
+
+                resolve(resultBase64);
             } catch (e) {
-                console.error("OpenCV Crop Failed", e);
-                resolve(base64Image);
+                console.error("AutoCrop Error", e);
+                resolve(null);
             }
         };
-        img.onerror = () => resolve(base64Image);
+        img.onerror = () => resolve(null);
+        img.src = base64Image.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}`;
+    });
+};
+
+/**
+ * Performs a manual perspective crop based on the provided normalized quadrilateral points (0-1).
+ */
+export const performPerspectiveWarp = async (base64Image: string, points: {x: number, y: number}[]): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            // @ts-ignore
+            if (typeof window !== 'undefined' && window.cv && window.cvLoaded) {
+                try {
+                    // @ts-ignore
+                    const cv = window.cv;
+                    const src = cv.imread(img);
+                    
+                    // Convert relative points to absolute pixel coordinates
+                    const pixelPoints = points.map(p => ({
+                        x: p.x * img.width,
+                        y: p.y * img.height
+                    }));
+
+                    // Ensure points are ordered TL, TR, BR, BL
+                    const [tl, tr, br, bl] = orderPoints(pixelPoints);
+
+                    // Calculate destination dimensions
+                    const widthA = Math.hypot(br.x - bl.x, br.y - bl.y);
+                    const widthB = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+                    const maxWidth = Math.max(widthA, widthB);
+
+                    const heightA = Math.hypot(tr.x - br.x, tr.y - br.y);
+                    const heightB = Math.hypot(tl.x - bl.x, tl.y - bl.y);
+                    const maxHeight = Math.max(heightA, heightB);
+
+                    // Perspective Transform
+                    const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                        0, 0,
+                        maxWidth - 1, 0,
+                        maxWidth - 1, maxHeight - 1,
+                        0, maxHeight - 1
+                    ]);
+
+                    const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                        tl.x, tl.y,
+                        tr.x, tr.y,
+                        br.x, br.y,
+                        bl.x, bl.y
+                    ]);
+
+                    const M = cv.getPerspectiveTransform(srcTri, dstTri);
+                    const warped = new cv.Mat();
+                    const dsize = new cv.Size(maxWidth, maxHeight);
+                    
+                    cv.warpPerspective(src, warped, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+                    const canvas = document.createElement('canvas');
+                    cv.imshow(canvas, warped);
+                    
+                    // Cleanup
+                    src.delete(); warped.delete(); M.delete(); srcTri.delete(); dstTri.delete();
+                    
+                    resolve(canvas.toDataURL('image/jpeg', 0.9).split(',')[1]);
+                    return;
+                } catch (e) {
+                    console.error("Manual Warp CV Error", e);
+                    // Fallthrough to standard canvas crop below
+                }
+            }
+
+            // Fallback: Simple Axis-Aligned Crop
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                reject(new Error("Canvas context unavailable"));
+                return;
+            }
+
+            const pxPoints = points.map(p => ({
+                x: p.x * img.width,
+                y: p.y * img.height
+            }));
+
+            const minX = Math.min(...pxPoints.map(p => p.x));
+            const minY = Math.min(...pxPoints.map(p => p.y));
+            const maxX = Math.max(...pxPoints.map(p => p.x));
+            const maxY = Math.max(...pxPoints.map(p => p.y));
+            
+            const width = Math.max(1, maxX - minX);
+            const height = Math.max(1, maxY - minY);
+
+            canvas.width = width;
+            canvas.height = height;
+
+            ctx.drawImage(img, minX, minY, width, height, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.9).split(',')[1]);
+        };
+        img.onerror = (e) => reject(e);
         img.src = base64Image.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}`;
     });
 };
@@ -128,7 +312,6 @@ export const convertToGrayscale = (imageData: ImageData): Uint8Array => {
 
 /**
  * Binarizes grayscale image using Adaptive Thresholding (Integral Image method for speed).
- * Useful for extracting ID text/symbols regardless of lighting.
  */
 export const adaptiveThreshold = (gray: Uint8Array, width: number, height: number, windowSize: number = 15, c: number = 5): Uint8Array => {
     const binary = new Uint8Array(width * height);
@@ -167,8 +350,6 @@ export const adaptiveThreshold = (gray: Uint8Array, width: number, height: numbe
             const sum = A - B - C + D;
             const mean = sum / count;
 
-            // If pixel < mean - C, it's black (0), else white (255)
-            // Standard image: 0=black, 255=white.
             binary[y * width + x] = gray[y * width + x] <= (mean - c) ? 0 : 255;
         }
     }
@@ -177,7 +358,6 @@ export const adaptiveThreshold = (gray: Uint8Array, width: number, height: numbe
 
 /**
  * Converts a base64 image to a binarized (B/W) base64 image using adaptive thresholding.
- * Optimizes text for OCR.
  */
 export const binarizeBase64 = async (base64: string): Promise<string> => {
     return new Promise((resolve) => {
@@ -195,9 +375,8 @@ export const binarizeBase64 = async (base64: string): Promise<string> => {
             ctx.drawImage(img, 0, 0);
             const imgData = ctx.getImageData(0, 0, w, h);
             const gray = convertToGrayscale(imgData);
-            const bin = adaptiveThreshold(gray, w, h, 25, 10); // Tuned window/C for text
+            const bin = adaptiveThreshold(gray, w, h, 25, 10); 
             
-            // Write back
             for (let i = 0; i < bin.length; i++) {
                 const val = bin[i];
                 imgData.data[i * 4] = val;
@@ -215,24 +394,17 @@ export const binarizeBase64 = async (base64: string): Promise<string> => {
 
 /**
  * Computes a Difference Hash (dHash) from image data.
- * Ideal for "ID Strip Signatures" as it captures structural gradients.
  */
 export const computeDHash = (imageData: ImageData): string => {
-    // 1. Resize to small size (e.g. 33x32 for 32x32 hash)
-    // We assume the input imageData is already the ROI we want to hash
     const { data, width } = imageData;
     let hash = '';
     
-    // We iterate rows. For each row, compare pixel[x] < pixel[x+1]
     for (let y = 0; y < imageData.height; y++) {
         for (let x = 0; x < width - 1; x++) {
             const idxLeft = (y * width + x) * 4;
             const idxRight = (y * width + (x + 1)) * 4;
-            
-            // Use Green channel or Avg for speed
             const valLeft = data[idxLeft + 1]; 
             const valRight = data[idxRight + 1];
-            
             hash += (valLeft < valRight) ? '1' : '0';
         }
     }
@@ -241,7 +413,6 @@ export const computeDHash = (imageData: ImageData): string => {
 
 /**
  * Extracts normalized ID strips (Bottom-Left and Bottom-Right) from a full card image.
- * Returns resized ImageData ready for hashing.
  */
 export const extractIDStrips = async (imageUrl: string): Promise<{ bl: ImageData | null, br: ImageData | null }> => {
     return new Promise((resolve) => {
@@ -252,7 +423,6 @@ export const extractIDStrips = async (imageUrl: string): Promise<{ bl: ImageData
             const ctx = canvas.getContext('2d');
             if (!ctx) return resolve({ bl: null, br: null });
 
-            // Standardize scaling (e.g. height=800) to ensure consistent feature extraction
             const scale = 800 / img.height;
             const w = img.width * scale;
             const h = 800;
@@ -261,39 +431,30 @@ export const extractIDStrips = async (imageUrl: string): Promise<{ bl: ImageData
             canvas.height = h;
             ctx.drawImage(img, 0, 0, w, h);
 
-            // Strip Parameters (Bottom 12%, Width 35%)
             const stripH = Math.floor(h * 0.12);
             const stripW = Math.floor(w * 0.35);
             
-            // Extract BL
             const blData = ctx.getImageData(0, h - stripH, stripW, stripH);
-            
-            // Extract BR
             const brData = ctx.getImageData(w - stripW, h - stripH, stripW, stripH);
 
-            // Pre-process for hashing (Resize to 33x32)
             const processForHash = (source: ImageData) => {
                 const tmpCanvas = document.createElement('canvas');
-                tmpCanvas.width = 33; // +1 for difference calc
+                tmpCanvas.width = 33; 
                 tmpCanvas.height = 32;
                 const tmpCtx = tmpCanvas.getContext('2d');
                 if(!tmpCtx) return null;
                 
-                // Create temp canvas to hold source data
                 const sCanvas = document.createElement('canvas');
                 sCanvas.width = source.width;
                 sCanvas.height = source.height;
                 sCanvas.getContext('2d')?.putImageData(source, 0, 0);
                 
-                // Draw resized
                 tmpCtx.drawImage(sCanvas, 0, 0, 33, 32);
                 
-                // Binarize (Optional but helps dHash stability on ID text)
                 const resized = tmpCtx.getImageData(0, 0, 33, 32);
                 const gray = convertToGrayscale(resized);
                 const bin = adaptiveThreshold(gray, 33, 32, 7, 2);
                 
-                // Write binary back to ImageData for visual debugging (optional) or dHash
                 for(let i=0; i<bin.length; i++) {
                     const val = bin[i];
                     resized.data[i*4] = val;
@@ -323,8 +484,7 @@ export const calculateHammingDistance = (hash1: string, hash2: string): number =
     return distance;
 };
 
-// --- ORIGINAL HELPERS (Maintained for compatibility) ---
-
+// Maintained for compatibility with UserProfile processImageUpload
 export const processImageUpload = async (file: File, options: { targetWidth: number; aspectRatio: number }): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -348,7 +508,6 @@ export const processImageUpload = async (file: File, options: { targetWidth: num
                 const sourceAspect = img.width / img.height;
                 let sx = 0, sy = 0, sWidth = img.width, sHeight = img.height;
 
-                // Center Crop Logic
                 if (sourceAspect > options.aspectRatio) {
                     sWidth = img.height * options.aspectRatio;
                     sx = (img.width - sWidth) / 2;
@@ -365,48 +524,5 @@ export const processImageUpload = async (file: File, options: { targetWidth: num
             img.onerror = (e) => reject(new Error("Failed to load image"));
         };
         reader.onerror = (e) => reject(e);
-    });
-};
-
-/**
- * Performs a crop based on the provided quadrilateral points.
- */
-export const performPerspectiveWarp = async (base64Image: string, points: {x: number, y: number}[]): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                reject(new Error("Canvas context unavailable"));
-                return;
-            }
-
-            const pxPoints = points.map(p => ({
-                x: p.x * img.width,
-                y: p.y * img.height
-            }));
-
-            const minX = Math.min(...pxPoints.map(p => p.x));
-            const minY = Math.min(...pxPoints.map(p => p.y));
-            const maxX = Math.max(...pxPoints.map(p => p.x));
-            const maxY = Math.max(...pxPoints.map(p => p.y));
-            
-            const width = Math.max(1, maxX - minX);
-            const height = Math.max(1, maxY - minY);
-
-            canvas.width = width;
-            canvas.height = height;
-
-            ctx.drawImage(
-                img, 
-                minX, minY, width, height, 
-                0, 0, width, height
-            );
-
-            resolve(canvas.toDataURL('image/jpeg', 0.9).split(',')[1]);
-        };
-        img.onerror = (e) => reject(e);
-        img.src = base64Image.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}`;
     });
 };

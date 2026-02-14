@@ -1,5 +1,5 @@
 
-import { Listing, ListingType, Condition, User, Language, ProductCategory, GradingCompany, SealedProductType, PokemonType, CardCategory, VariantTag, BreakStatus, PaymentIntent, WalletTransaction, PaymentStatus, TransactionType, Group, Thread, Comment } from './types';
+import { Listing, ListingType, Condition, User, Language, ProductCategory, GradingCompany, SealedProductType, PokemonType, CardCategory, VariantTag, BreakStatus, PaymentIntent, WalletTransaction, PaymentStatus, TransactionType, Group, Thread, Comment, Report } from './types';
 
 export const MOCK_USER_BUYER: User = {
   id: 'u_buyer_01',
@@ -11,6 +11,7 @@ export const MOCK_USER_BUYER: User = {
   joinedAt: new Date('2023-01-15'),
   location: 'Kanto, JP',
   isLocationVerified: true,
+  isAdmin: true, // Mock Admin Access
   bio: 'Gotta catch em all! Always looking for Pikachu variants.',
   avatarUrl: 'https://ui-avatars.com/api/?name=Ash+Ketchum&background=ef4444&color=fff',
   coverImageUrl: 'https://images.unsplash.com/photo-1613771404784-3a5686aa2be3?auto=format&fit=crop&q=80&w=2000',
@@ -25,7 +26,10 @@ export const MOCK_USER_BUYER: User = {
       pokemon: ['Pikachu', 'Charizard'],
       sets: ['151', 'Base Set']
   },
-  joinedGroupIds: ['g_charizard', 'g_151']
+  joinedGroupIds: ['g_charizard', 'g_151'],
+  onboarding: {
+      buyer: { step: 5, completedAt: new Date('2023-01-15'), skipped: false }
+  }
 };
 
 export const MOCK_USER_SELLER: User = {
@@ -39,6 +43,7 @@ export const MOCK_USER_SELLER: User = {
   location: 'Celadon City',
   isLocationVerified: false,
   bio: 'Prepare for trouble! We sell the rarest sourced cards.',
+  sellerAbout: 'We are Team Rocket, and we are blasting off at the speed of light! We specialize in sourcing rare Pokemon cards from across the regions. Surrender now, or prepare to fight for the best deals! We verify all our cards with Meowth\'s keen eye.',
   avatarUrl: 'https://ui-avatars.com/api/?name=Team+Rocket&background=1e1b4b&color=fff',
   coverImageUrl: 'https://images.unsplash.com/photo-1639803930843-0865a770335e?auto=format&fit=crop&q=80&w=2000',
   avatar: 'https://ui-avatars.com/api/?name=Team+Rocket&background=1e1b4b&color=fff',
@@ -46,13 +51,18 @@ export const MOCK_USER_SELLER: User = {
   isVerifiedSeller: true,
   socialLinks: {
       twitter: 'teamrocket',
-      youtube: 'rocket_tv'
+      youtube: 'rocket_tv',
+      tiktok: 'team_rocket_official',
+      website: 'www.rocket-casino.com'
   },
   interests: {
       pokemon: ['Meowth', 'Wobbuffet'],
       sets: ['Team Rocket']
   },
-  joinedGroupIds: ['g_marketplace']
+  joinedGroupIds: ['g_marketplace'],
+  onboarding: {
+      seller: { step: 6, completedAt: new Date('2022-11-01'), skipped: false }
+  }
 };
 
 export const SECONDARY_SELLER: User = {
@@ -66,6 +76,7 @@ export const SECONDARY_SELLER: User = {
   location: 'Pallet Town',
   isLocationVerified: true,
   bio: 'Pokemon Researcher and collector of vintage artifacts.',
+  sellerAbout: 'Welcome to my lab! I trade in scientific artifacts and rare, vintage Pokémon cards. Every item is thoroughly researched and cataloged.',
   avatarUrl: 'https://ui-avatars.com/api/?name=Professor+Oak&background=f59e0b&color=fff',
   coverImageUrl: 'https://images.unsplash.com/photo-1605631086687-987777038e85?auto=format&fit=crop&q=80&w=2000',
   avatar: 'https://ui-avatars.com/api/?name=Professor+Oak&background=f59e0b&color=fff',
@@ -76,6 +87,39 @@ export const SECONDARY_SELLER: User = {
   },
   joinedGroupIds: ['g_vintage']
 };
+
+export const MOCK_REPORTS: Report[] = [
+    {
+        id: 'r_1',
+        reporterId: 'u_buyer_01',
+        reporterName: 'Ash Ketchum',
+        reportedEntityId: 'l_1002', // Some listing
+        entityType: 'LISTING',
+        reason: 'Counterfeit item suspected. The font on the HP looks wrong.',
+        status: 'PENDING',
+        createdAt: new Date()
+    },
+    {
+        id: 'r_2',
+        reporterId: 'u_seller_02',
+        reporterName: 'Professor Oak',
+        reportedEntityId: 'u_seller_01', // Team Rocket
+        entityType: 'USER',
+        reason: 'Harassment in comments and aggressive negotiation.',
+        status: 'PENDING',
+        createdAt: new Date(Date.now() - 86400000)
+    },
+    {
+        id: 'r_3',
+        reporterId: 'u_buyer_01',
+        reporterName: 'Ash Ketchum',
+        reportedEntityId: 't_2',
+        entityType: 'THREAD',
+        reason: 'Spam / Self-promotion in community thread.',
+        status: 'PENDING',
+        createdAt: new Date(Date.now() - 172800000)
+    }
+];
 
 export const TAG_DISPLAY_LABELS: Record<VariantTag, string> = {
     [VariantTag.FULL_ART]: 'Full Art',
@@ -90,7 +134,8 @@ export const TAG_DISPLAY_LABELS: Record<VariantTag, string> = {
     [VariantTag.SECRET_RARE]: 'Secret Rare'
 };
 
-// --- MOCK COMMUNITY DATA ---
+// ... (Rest of existing constants - Truncated for brevity but assume all prior consts exist below)
+// ... INITIAL_GROUPS, INITIAL_THREADS, INITIAL_COMMENTS, etc.
 
 export const INITIAL_GROUPS: Group[] = [
     {
@@ -199,8 +244,6 @@ export const INITIAL_COMMENTS: Comment[] = [
         upvotes: 5
     }
 ];
-
-// ... (Rest of existing constants)
 
 export const MOCK_PAYMENT_INTENTS: PaymentIntent[] = [
     {

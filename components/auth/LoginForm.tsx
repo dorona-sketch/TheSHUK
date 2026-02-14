@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 interface LoginFormProps {
     onSuccess: () => void;
     onSwitchToRegister: () => void;
-    onForgotPassword?: () => void; // New Prop
+    onForgotPassword?: () => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, onSwitchToRegister, onForgotPassword }) => {
