@@ -4,6 +4,7 @@ import { MOCK_USER_BUYER, MOCK_USER_SELLER, SECONDARY_SELLER } from '../constant
 
 const DB_KEY = 'pokevault_users';
 const SESS_KEY = 'pokevault_session';
+const CODES_KEY = 'pokevault_verification_codes';
 
 // Extended type for internal storage to include password
 interface StoredUser extends User {
@@ -28,6 +29,30 @@ const saveUsers = (users: StoredUser[]) => {
     if (typeof window !== 'undefined') {
         localStorage.setItem(DB_KEY, JSON.stringify(users));
     }
+};
+
+// --- Verification Code Helpers ---
+const getCodes = (): Record<string, string> => {
+    if (typeof window === 'undefined') return {};
+    const data = localStorage.getItem(CODES_KEY);
+    return data ? JSON.parse(data) : {};
+};
+
+const saveCode = (userId: string, code: string) => {
+    const codes = getCodes();
+    codes[userId] = code;
+    localStorage.setItem(CODES_KEY, JSON.stringify(codes));
+};
+
+const getCode = (userId: string) => {
+    const codes = getCodes();
+    return codes[userId];
+};
+
+const removeCode = (userId: string) => {
+    const codes = getCodes();
+    delete codes[userId];
+    localStorage.setItem(CODES_KEY, JSON.stringify(codes));
 };
 
 export const authService = {
@@ -134,6 +159,9 @@ export const authService = {
         saveUsers(users);
         localStorage.setItem(SESS_KEY, newUser.id);
         
+        // Auto-trigger verification email simulation
+        await this.sendVerificationCode(email, newUser.id);
+
         const { password: _, ...safeUser } = newUser;
         return { user: safeUser as User };
     },
@@ -180,14 +208,31 @@ export const authService = {
 
     async sendVerificationCode(email: string, userId: string) {
         await new Promise(r => setTimeout(r, 600));
+        // Generate random 6-digit code
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        saveCode(userId, code);
+        
+        console.log(`%c[VERIFICATION] Code for ${email}: ${code}`, 'background: #22c55e; color: #fff; padding: 4px; font-weight: bold;');
+        
         return { success: true, message: "Verification code sent" };
     },
 
     async verifyEmailToken(userId: string, code: string) {
-        await new Promise(r => setTimeout(r, 600));
-        // Mock check (in real app, check DB)
-        // For dev, accept any 6 digit code or specifically '000000'
-        return { success: true, message: "Email verified successfully" };
+        await new Promise(r => setTimeout(r, 800));
+        const validCode = getCode(userId);
+        
+        // Accept '000000' as a master code for convenience in dev
+        if ((validCode && validCode === code) || code === '000000') {
+            const users = getUsers();
+            const idx = users.findIndex(u => u.id === userId);
+            if (idx !== -1) {
+                users[idx].isEmailVerified = true;
+                saveUsers(users);
+                removeCode(userId);
+                return { success: true, message: "Email verified successfully" };
+            }
+        }
+        return { success: false, message: "Invalid verification code" };
     },
 
     async getAllUsers(): Promise<User[]> {

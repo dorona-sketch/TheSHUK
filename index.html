@@ -1,11 +1,13 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>PokeVault - Collectibles Marketplace</title>
+    <title>The Digital Shuk</title>
+    <link rel="stylesheet" href="/index.css" />
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cinzel:wght@700&display=swap" rel="stylesheet">
     <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="window.cvLoaded=true"></script>
     <script>
       // Polyfills for browser environment compatibility
@@ -13,29 +15,45 @@
       window.process = window.process || { env: {} };
       
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
               sans: ['Inter', 'sans-serif'],
+              display: ['Cinzel', 'serif'],
             },
             colors: {
+              // The Lugia Palette
+              shuk: {
+                dark: '#0B1116',      // Deepest background (Charcoal/Black)
+                surface: '#151E26',   // Card surface (Stormy Dark Blue)
+                surfaceHigh: '#1E2933', // Lighter surface
+                border: '#2D3B48',    // Borders (Muted Blue-Grey)
+                primary: '#22d3ee',   // Cyan Lightning (Action)
+                primaryDim: '#0e7490',// Dimmed Lightning
+                silver: '#E2E8F0',    // Text/Highlights
+                muted: '#94A3B8',     // Secondary text
+                teeth: '#000000',     // The black border elements
+              },
+              // Mapping old primary to new theme for backward compat
               primary: {
-                50: '#f5f3ff',
-                100: '#ede9fe',
-                200: '#ddd6fe',
-                300: '#c4b5fd',
-                400: '#a78bfa',
-                500: '#8b5cf6',
-                600: '#7c3aed',
-                700: '#6d28d9',
-                800: '#5b21b6',
-                900: '#4c1d95',
+                50: '#f0f9ff',
+                100: '#e0f2fe',
+                200: '#bae6fd',
+                300: '#7dd3fc',
+                400: '#38bdf8',
+                500: '#0ea5e9',
+                600: '#0284c7',
+                700: '#0369a1',
+                800: '#075985',
+                900: '#0c4a6e',
               }
             },
             animation: {
               'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
               'pulse-slow': 'pulseSlow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              'bounce-short': 'bounceShort 1s infinite'
+              'bounce-short': 'bounceShort 1s infinite',
+              'shimmer': 'shimmer 2s linear infinite',
             },
             keyframes: {
               fadeInUp: {
@@ -49,7 +67,15 @@
               pulseSlow: {
                 '0%, 100%': { opacity: '1' },
                 '50%': { opacity: '0.7' },
+              },
+              shimmer: {
+                '0%': { backgroundPosition: '-1000px 0' },
+                '100%': { backgroundPosition: '1000px 0' }
               }
+            },
+            backgroundImage: {
+              'shuk-gradient': 'linear-gradient(to bottom, #0B1116, #111a22)',
+              'silver-sheen': 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.05) 100%)',
             }
           }
         }
@@ -66,7 +92,7 @@
 }
 </script>
 </head>
-  <body>
+  <body class="bg-shuk-dark text-shuk-silver">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

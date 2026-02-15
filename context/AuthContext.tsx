@@ -80,10 +80,8 @@ export const AuthProvider = ({ children }: PropsWithChildren<{}>) => {
       if (!user) return { success: false, message: 'User not found' };
       const res = await authService.verifyEmailToken(user.id, code);
       if (res.success) {
-          // Refresh user state
-          setUser({ ...user, isEmailVerified: true });
-          // Also update session in background
-          await authService.updateProfile(user, { isEmailVerified: true });
+          // Update local state immediately. DB is already updated by authService.
+          setUser(prev => prev ? { ...prev, isEmailVerified: true } : null);
       }
       return res;
   };
@@ -110,7 +108,7 @@ export const AuthProvider = ({ children }: PropsWithChildren<{}>) => {
         user, 
         loading, 
         login, 
-        socialLogin,
+        socialLogin, 
         register, 
         logout, 
         updateProfile, 

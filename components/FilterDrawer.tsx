@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
-import { PokemonType, VariantTag, CardCategory, Condition, SortOption, ProductCategory, GradingCompany, SealedProductType, SearchScope, BreakStatus, AppMode, Language, TcgSet } from '../types';
+import { PokemonType, VariantTag, CardCategory, Condition, SortOption, ProductCategory, GradingCompany, SealedProductType, SearchScope, BreakStatus, AppMode, Language } from '../types';
 import { TAG_DISPLAY_LABELS } from '../constants';
 
 interface FilterDrawerProps {
@@ -24,41 +24,46 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const SCOPE_LABELS: Record<SearchScope, string> = {
-    [SearchScope.ALL]: 'All Fields',
+    [SearchScope.ALL]: 'All',
     [SearchScope.TITLE]: 'Title',
     [SearchScope.POKEMON]: 'Pokemon',
     [SearchScope.SET]: 'Set',
     [SearchScope.SELLER]: 'Seller',
-    [SearchScope.BOOSTER]: 'Booster Name'
+    [SearchScope.BOOSTER]: 'Booster'
 };
+
+const COMMON_GRADES = ['10', '9.5', '9', '8.5', '8', '7', '6', '5', '4', '3', '2', '1'];
 
 export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) => {
   const { filters, setFilter, sortOption, setSortOption, resetFilters, getSuggestions, appMode, availableSets } = useStore();
 
   // --- Local State for Atomic Updates ---
+  // Using Sets ensures O(1) lookup complexity for selections
   const [localSearch, setLocalSearch] = useState(filters.searchQuery);
   const [localScope, setLocalScope] = useState<SearchScope>(filters.searchScope || SearchScope.ALL);
   const [localSort, setLocalSort] = useState<SortOption>(sortOption);
   
-  // New Filters
+  // Text Filters
   const [localPokemonName, setLocalPokemonName] = useState<string>(filters.pokemonName || '');
   const [localBoosterName, setLocalBoosterName] = useState<string>(filters.boosterName || '');
   const [localLanguage, setLocalLanguage] = useState<string>(filters.language || '');
+  
+  // Set-based Multi-Select Filters
   const [localSeries, setLocalSeries] = useState<Set<string>>(new Set(filters.series || []));
   const [localSet, setLocalSet] = useState<Set<string>>(new Set(filters.set || []));
 
-  const [localPokemonTypes, setLocalPokemonTypes] = useState<Set<PokemonType>>(new Set(filters.pokemonTypes));
-  const [localCardCategories, setLocalCardCategories] = useState<Set<CardCategory>>(new Set(filters.cardCategories));
-  const [localVariantTags, setLocalVariantTags] = useState<Set<VariantTag>>(new Set(filters.variantTags));
+  const [localPokemonTypes, setLocalPokemonTypes] = useState<Set<PokemonType>>(new Set(filters.pokemonTypes || []));
+  const [localCardCategories, setLocalCardCategories] = useState<Set<CardCategory>>(new Set(filters.cardCategories || []));
+  const [localVariantTags, setLocalVariantTags] = useState<Set<VariantTag>>(new Set(filters.variantTags || []));
   
-  const [localCondition, setLocalCondition] = useState<Set<Condition>>(new Set(filters.condition));
-  const [localGradingCompany, setLocalGradingCompany] = useState<Set<GradingCompany>>(new Set(filters.gradingCompany));
-  const [localSealedProductType, setLocalSealedProductType] = useState<Set<SealedProductType>>(new Set(filters.sealedProductType));
+  const [localCondition, setLocalCondition] = useState<Set<Condition>>(new Set(filters.condition || []));
+  const [localGradingCompany, setLocalGradingCompany] = useState<Set<GradingCompany>>(new Set(filters.gradingCompany || []));
+  const [localGrades, setLocalGrades] = useState<Set<string>>(new Set(filters.grades || []));
+  const [localSealedProductType, setLocalSealedProductType] = useState<Set<SealedProductType>>(new Set(filters.sealedProductType || []));
 
-  // Add Product Category State if we want to filter by Raw/Graded/Sealed
   const [localCategory, setLocalCategory] = useState<ProductCategory | undefined>(filters.category);
 
-  const [localBreakStatus, setLocalBreakStatus] = useState<Set<BreakStatus>>(new Set(filters.breakStatus));
+  const [localBreakStatus, setLocalBreakStatus] = useState<Set<BreakStatus>>(new Set(filters.breakStatus || []));
   const [localPriceMin, setLocalPriceMin] = useState<string>(filters.priceRange.min?.toString() || '');
   const [localPriceMax, setLocalPriceMax] = useState<string>(filters.priceRange.max?.toString() || '');
 
@@ -79,7 +84,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   const drawerRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  // Sync local state with global state when drawer opens (Snap to current reality)
+  // Sync local state with global state when drawer opens
   useEffect(() => {
     if (isOpen) {
       setLocalSearch(filters.searchQuery);
@@ -97,6 +102,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalVariantTags(new Set(filters.variantTags || []));
       setLocalCondition(new Set(filters.condition || []));
       setLocalGradingCompany(new Set(filters.gradingCompany || []));
+      setLocalGrades(new Set(filters.grades || []));
       setLocalSealedProductType(new Set(filters.sealedProductType || []));
       
       setLocalCategory(filters.category);
@@ -110,16 +116,13 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   // --- Accessibility: Focus Management & Trap ---
   useEffect(() => {
       if (isOpen) {
-          // Save current focus
           previousFocusRef.current = document.activeElement as HTMLElement;
           
-          // Focus the close button or first focusable element inside the drawer
           const focusable = drawerRef.current?.querySelectorAll(
               'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
           );
           
           if (focusable && focusable.length > 0) {
-              // Try to focus the first input if available (usually search), otherwise the close button
               const searchInput = drawerRef.current?.querySelector('input');
               if (searchInput) {
                   (searchInput as HTMLElement).focus();
@@ -127,22 +130,14 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                   (focusable[0] as HTMLElement).focus();
               }
           }
-
-          // Disable body scroll
           document.body.style.overflow = 'hidden';
       } else {
-          // Restore focus
           if (previousFocusRef.current) {
               previousFocusRef.current.focus();
           }
-          // Enable body scroll
           document.body.style.overflow = '';
       }
-
-      // Cleanup on unmount in case component is removed while open
-      return () => {
-          document.body.style.overflow = '';
-      };
+      return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
 
   // Handle Tab Trap and Escape Key
@@ -167,12 +162,12 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
               const firstElement = focusableElements[0] as HTMLElement;
               const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
 
-              if (e.shiftKey) { // Shift + Tab
+              if (e.shiftKey) { 
                   if (document.activeElement === firstElement) {
                       e.preventDefault();
                       lastElement.focus();
                   }
-              } else { // Tab
+              } else { 
                   if (document.activeElement === lastElement) {
                       e.preventDefault();
                       firstElement.focus();
@@ -181,16 +176,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
           }
       };
 
-      if (isOpen) {
-          window.addEventListener('keydown', handleKeyDown);
-      }
-      
-      return () => {
-          window.removeEventListener('keydown', handleKeyDown);
-      };
+      if (isOpen) window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // --- Derived Data for Selectors ---
+  // --- Derived Data ---
   const uniqueSeries = useMemo(() => {
       const series = new Set(availableSets.map(s => s.series));
       return Array.from(series).sort();
@@ -198,7 +188,6 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
 
   const visibleSets = useMemo(() => {
       let sets = availableSets;
-      // If any series are selected, filter sets by those series
       if (localSeries.size > 0) {
           sets = sets.filter(s => localSeries.has(s.series));
       }
@@ -216,7 +205,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
               setSuggestions([]);
               setShowSuggestions(false);
           }
-      }, 250); // 250ms debounce
+      }, 250);
       return () => clearTimeout(timer);
   }, [localSearch, localScope, getSuggestions]);
 
@@ -238,12 +227,10 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   // Click outside to close suggestions
   useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
-          // Main Search
           if (suggestionRef.current && !suggestionRef.current.contains(event.target as Node) && 
               searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
               setShowSuggestions(false);
           }
-          // Pokemon Name
           if (pokeSuggestionRef.current && !pokeSuggestionRef.current.contains(event.target as Node) && 
               pokeInputRef.current && !pokeInputRef.current.contains(event.target as Node)) {
               setShowPokeSuggestions(false);
@@ -253,7 +240,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // --- Core Toggle Logic (O(1)) ---
+  // --- Core Toggle Logic (O(1) complexity) ---
   const toggleFilter = useCallback(<T,>(item: T, setFunction: React.Dispatch<React.SetStateAction<Set<T>>>) => {
       setFunction(prev => {
           const next = new Set(prev);
@@ -266,19 +253,16 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       });
   }, []);
 
-  // --- Keyboard Navigation for Autocomplete ---
+  // --- Keyboard Navigation ---
   const handleInputKeyDown = (e: React.KeyboardEvent, isPokemonSearch: boolean = false) => {
       const isShowing = isPokemonSearch ? showPokeSuggestions : showSuggestions;
       const suggestionsList = isPokemonSearch ? pokeSuggestions : suggestions;
       const activeIndex = isPokemonSearch ? activePokeSuggestionIndex : activeSuggestionIndex;
       const setIndex = isPokemonSearch ? setActivePokeSuggestionIndex : setActiveSuggestionIndex;
       const setShow = isPokemonSearch ? setShowPokeSuggestions : setShowSuggestions;
-      // Note: We handle selection logic slightly differently for main search smart fill
 
       if (!isShowing) {
-          if (e.key === 'ArrowDown') {
-              setShow(true);
-          }
+          if (e.key === 'ArrowDown') setShow(true);
           return;
       }
 
@@ -296,41 +280,35 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
               setShow(false);
           }
       } else if (e.key === 'Escape') {
-          e.stopPropagation(); // Stop global escape from closing modal immediately
+          e.stopPropagation();
           setShow(false);
       }
   };
 
-  // --- Atomic Actions ---
-
   const handleApply = () => {
-    // 1. Text & Sort
+    // Commit all local states to global store
     setFilter('searchQuery', localSearch);
     setFilter('searchScope', localScope); 
     setSortOption(localSort);
     
-    // 2. Selectors
     setFilter('pokemonName', localPokemonName);
     setFilter('boosterName', localBoosterName);
     setFilter('language', localLanguage);
     
-    // Convert Sets back to arrays
+    // Convert Sets back to arrays for global store interface
     setFilter('series', Array.from(localSeries));
     setFilter('set', Array.from(localSet));
-
-    // 3. Set-based Filters (Convert back to Arrays for global store)
     setFilter('pokemonTypes', Array.from(localPokemonTypes));
     setFilter('cardCategories', Array.from(localCardCategories));
     setFilter('variantTags', Array.from(localVariantTags));
     setFilter('condition', Array.from(localCondition));
     setFilter('gradingCompany', Array.from(localGradingCompany));
+    setFilter('grades', Array.from(localGrades));
     setFilter('sealedProductType', Array.from(localSealedProductType));
-    
-    setFilter('category', localCategory);
-
     setFilter('breakStatus', Array.from(localBreakStatus));
     
-    // 4. Ranges
+    setFilter('category', localCategory);
+    
     setFilter('priceRange', {
         min: localPriceMin ? parseFloat(localPriceMin) : null,
         max: localPriceMax ? parseFloat(localPriceMax) : null
@@ -340,11 +318,10 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   };
 
   const handleGlobalReset = () => {
-      // 1. Reset Global
       resetFilters();
       setSortOption(SortOption.NEWEST);
       
-      // 2. Reset Local (Immediate visual feedback)
+      // Reset Local State to match
       setLocalSearch('');
       setLocalScope(SearchScope.ALL);
       setLocalSort(SortOption.NEWEST);
@@ -358,6 +335,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalVariantTags(new Set());
       setLocalCondition(new Set());
       setLocalGradingCompany(new Set());
+      setLocalGrades(new Set());
       setLocalSealedProductType(new Set());
       setLocalBreakStatus(new Set());
       setLocalCategory(undefined);
@@ -371,22 +349,15 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
           setShowPokeSuggestions(false);
           pokeInputRef.current?.focus();
       } else {
-          // Smart Search: Check if the value matches a known Set Name
+          // Smart Fill: Check if suggestion is a Set Name
           const matchedSet = availableSets.find(s => s.name.toLowerCase() === value.toLowerCase());
-          
           if (matchedSet) {
-              // Smart Auto-Fill Logic
-              // 1. Select the Set
               setLocalSet(new Set([matchedSet.id]));
-              // 2. Select the corresponding Series
               setLocalSeries(new Set([matchedSet.series]));
-              // 3. Clear the text search so the filter does the work
               setLocalSearch('');
           } else {
-              // Normal text search
               setLocalSearch(value);
           }
-          
           setShowSuggestions(false);
           searchInputRef.current?.focus();
       }
@@ -422,7 +393,6 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
         aria-modal="true" 
         aria-labelledby="filter-drawer-title"
     >
-      {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-gray-600 bg-opacity-50 transition-opacity backdrop-blur-sm" 
         onClick={onClose} 
@@ -434,7 +404,6 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
             ref={drawerRef}
             className="w-screen max-w-md pointer-events-auto flex flex-col bg-white shadow-2xl transform transition-transform ease-in-out duration-300 h-full"
         >
-            
             {/* Header */}
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center shrink-0">
                 <h2 id="filter-drawer-title" className="text-lg font-bold text-gray-900">Filters & Sort</h2>
@@ -460,65 +429,69 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar relative">
                 
-                {/* 0. Scoped Search & Autocomplete */}
+                {/* Search */}
                 <section className="relative z-20">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Search</h3>
-                    
                     <div className="flex flex-col gap-2">
-                        {/* Search Input with Scope Built-in */}
-                        <div className="relative group">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                </svg>
-                            </div>
-                            <input
-                                ref={searchInputRef}
-                                type="text"
-                                role="combobox"
-                                value={localSearch}
-                                onChange={(e) => {
-                                    setLocalSearch(e.target.value);
-                                    setActiveSuggestionIndex(-1);
-                                }}
-                                onKeyDown={(e) => handleInputKeyDown(e, false)}
-                                onFocus={() => {
-                                    if (localSearch) setShowSuggestions(true);
-                                }}
-                                placeholder="Search sets, pokemon..."
-                                className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-shadow shadow-sm"
-                                autoComplete="off"
-                                aria-label="Search Query"
-                                aria-autocomplete="list"
-                                aria-controls="search-results-list"
-                                aria-activedescendant={activeSuggestionIndex >= 0 ? `search-result-item-${activeSuggestionIndex}` : undefined}
-                                aria-expanded={showSuggestions}
-                            />
-                            {localSearch && (
-                                <button
-                                    type="button"
-                                    onClick={clearSearch}
-                                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
-                                    aria-label="Clear search"
+                        <div className="relative group flex">
+                            <div className="relative bg-gray-100 border border-r-0 border-gray-300 rounded-l-lg hover:bg-gray-200 transition-colors">
+                                <select 
+                                    value={localScope}
+                                    onChange={(e) => setLocalScope(e.target.value as SearchScope)}
+                                    className="appearance-none bg-transparent py-2.5 pl-3 pr-8 text-xs font-bold text-gray-700 focus:outline-none cursor-pointer h-full"
+                                    style={{ textAlignLast: 'center' }}
                                 >
-                                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                    {Object.values(SearchScope).map(scope => (
+                                        <option key={scope} value={scope}>{SCOPE_LABELS[scope]}</option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                     </svg>
-                                </button>
-                            )}
+                                </div>
+                            </div>
 
-                            {/* Suggestions Dropdown */}
+                            <div className="relative flex-1">
+                                <input
+                                    ref={searchInputRef}
+                                    type="text"
+                                    role="combobox"
+                                    value={localSearch}
+                                    onChange={(e) => {
+                                        setLocalSearch(e.target.value);
+                                        setActiveSuggestionIndex(-1);
+                                    }}
+                                    onKeyDown={(e) => handleInputKeyDown(e, false)}
+                                    onFocus={() => { if (localSearch) setShowSuggestions(true); }}
+                                    placeholder={`Search by ${SCOPE_LABELS[localScope]}...`}
+                                    className="block w-full py-2.5 px-3 border border-gray-300 rounded-r-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-shadow shadow-sm z-10"
+                                    autoComplete="off"
+                                    aria-expanded={showSuggestions}
+                                />
+                                {localSearch && (
+                                    <button
+                                        type="button"
+                                        onClick={clearSearch}
+                                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer z-20"
+                                        aria-label="Clear search"
+                                    >
+                                        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                        </svg>
+                                    </button>
+                                )}
+                            </div>
+
                             {showSuggestions && (
                                 <div ref={suggestionRef} className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-60 overflow-y-auto z-50">
                                     {suggestions.length > 0 ? (
-                                        <ul id="search-results-list" role="listbox">
+                                        <ul role="listbox">
                                             {suggestions.map((suggestion, idx) => {
-                                                // Check if it's a known set to visually indicate it will auto-filter
                                                 const isSet = availableSets.some(s => s.name.toLowerCase() === suggestion.toLowerCase());
                                                 return (
                                                     <li 
                                                         key={idx}
-                                                        id={`search-result-item-${idx}`}
                                                         role="option"
                                                         aria-selected={idx === activeSuggestionIndex}
                                                         onClick={() => handleSuggestionClick(suggestion, false)}
@@ -529,40 +502,20 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                                             {isSet && <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold uppercase">Set</span>}
                                                             <span className="truncate">{highlightMatch(suggestion, localSearch)}</span>
                                                         </div>
-                                                        {idx === activeSuggestionIndex && (
-                                                            <svg className="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                                        )}
                                                     </li>
                                                 );
                                             })}
                                         </ul>
                                     ) : (
-                                        <div className="px-4 py-3 text-sm text-gray-400 text-center italic">
-                                            No matches found
-                                        </div>
+                                        <div className="px-4 py-3 text-sm text-gray-400 text-center italic">No matches found</div>
                                     )}
                                 </div>
                             )}
                         </div>
-
-                        {/* Scope Selector */}
-                        <div className="flex gap-2 items-center mt-1">
-                            <span className="text-xs text-gray-500 font-medium" id="scope-label">Search in:</span>
-                            <select 
-                                value={localScope}
-                                aria-labelledby="scope-label"
-                                onChange={(e) => setLocalScope(e.target.value as SearchScope)}
-                                className="bg-gray-100 border-none text-xs font-bold text-gray-700 rounded-md py-1 pl-2 pr-6 focus:ring-2 focus:ring-primary-500 cursor-pointer"
-                            >
-                                {Object.values(SearchScope).map(scope => (
-                                    <option key={scope} value={scope}>{SCOPE_LABELS[scope]}</option>
-                                ))}
-                            </select>
-                        </div>
                     </div>
                 </section>
 
-                {/* 0.5. Specific Pokemon Name Filter */}
+                {/* Specific Pokemon Filter */}
                 <section className="relative z-10">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Pokémon Name</h3>
                     <div className="relative group">
@@ -583,16 +536,10 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 setActivePokeSuggestionIndex(-1);
                             }}
                             onKeyDown={(e) => handleInputKeyDown(e, true)}
-                            onFocus={() => {
-                                if (localPokemonName) setShowPokeSuggestions(true);
-                            }}
+                            onFocus={() => { if (localPokemonName) setShowPokeSuggestions(true); }}
                             placeholder="e.g. Charizard"
-                            className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-shadow shadow-sm"
+                            className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-shadow shadow-sm"
                             autoComplete="off"
-                            aria-label="Pokemon Name"
-                            aria-autocomplete="list"
-                            aria-controls="poke-results-list"
-                            aria-activedescendant={activePokeSuggestionIndex >= 0 ? `poke-result-item-${activePokeSuggestionIndex}` : undefined}
                             aria-expanded={showPokeSuggestions}
                         />
                         {localPokemonName && (
@@ -600,23 +547,17 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 type="button"
                                 onClick={clearPokemonName}
                                 className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
-                                aria-label="Clear pokemon name"
                             >
-                                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                </svg>
+                                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
                             </button>
                         )}
-
-                        {/* Pokemon Suggestions Dropdown */}
                         {showPokeSuggestions && (
                             <div ref={pokeSuggestionRef} className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-60 overflow-y-auto z-50">
                                 {pokeSuggestions.length > 0 ? (
-                                    <ul id="poke-results-list" role="listbox">
+                                    <ul role="listbox">
                                         {pokeSuggestions.map((suggestion, idx) => (
                                             <li 
                                                 key={idx}
-                                                id={`poke-result-item-${idx}`}
                                                 role="option"
                                                 aria-selected={idx === activePokeSuggestionIndex}
                                                 onClick={() => handleSuggestionClick(suggestion, true)}
@@ -624,30 +565,24 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                                     ${idx === activePokeSuggestionIndex ? 'bg-primary-50 text-primary-900' : 'hover:bg-gray-50 text-gray-700'}`}
                                             >
                                                 <span className="truncate">{highlightMatch(suggestion, localPokemonName)}</span>
-                                                {idx === activePokeSuggestionIndex && (
-                                                    <svg className="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                                )}
                                             </li>
                                         ))}
                                     </ul>
                                 ) : (
-                                    <div className="px-4 py-3 text-sm text-gray-400 text-center italic">
-                                        No matches found
-                                    </div>
+                                    <div className="px-4 py-3 text-sm text-gray-400 text-center italic">No matches found</div>
                                 )}
                             </div>
                         )}
                     </div>
                 </section>
 
-                {/* 1. Sort Order */}
+                {/* Sort */}
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Sort By</h3>
                     <select 
                         value={localSort} 
                         onChange={(e) => setLocalSort(e.target.value as SortOption)}
                         className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
-                        aria-label="Sort Order"
                     >
                         <option value={SortOption.NEWEST}>Newest Listed</option>
                         <option value={SortOption.ENDING_SOON}>Ending Soonest</option>
@@ -657,7 +592,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </select>
                 </section>
 
-                {/* 2. Product Category (Raw / Graded / Sealed) */}
+                {/* Product Category */}
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Product Category</h3>
                     <div className="flex gap-2">
@@ -685,69 +620,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </div>
                 </section>
 
-                {/* 2.5 Language */}
-                <section>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Language</h3>
-                    <select
-                        value={localLanguage}
-                        onChange={(e) => setLocalLanguage(e.target.value)}
-                        className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
-                    >
-                        <option value="">Any Language</option>
-                        {Object.values(Language).map(lang => (
-                            <option key={lang} value={lang}>{lang}</option>
-                        ))}
-                    </select>
-                </section>
-
-                {/* 5. Break Specific Filters (Only relevant for Breaks/Combined) */}
-                {(appMode === AppMode.BREAKS || appMode === AppMode.COMBINED) && (
-                    <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-4">
-                        <section>
-                            <h3 className="text-sm font-bold text-purple-900 mb-3 uppercase tracking-wide flex items-center gap-2">
-                                <span className="text-lg">📺</span> Break Status
-                            </h3>
-                            <div className="flex flex-wrap gap-2">
-                                {[
-                                    { val: BreakStatus.OPEN, label: 'Open Spots' },
-                                    { val: BreakStatus.FULL_PENDING_SCHEDULE, label: 'Filling/Full' },
-                                    { val: BreakStatus.LIVE, label: 'Live Now' },
-                                    { val: BreakStatus.COMPLETED, label: 'Completed' }
-                                ].map(status => {
-                                    const isSelected = localBreakStatus.has(status.val);
-                                    return (
-                                        <button
-                                            type="button"
-                                            key={status.val}
-                                            onClick={() => toggleFilter(status.val, setLocalBreakStatus)}
-                                            aria-pressed={isSelected}
-                                            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                                                isSelected
-                                                ? 'bg-purple-600 text-white border-purple-600 shadow-md'
-                                                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                                            }`}
-                                        >
-                                            {status.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </section>
-
-                        <section>
-                            <h3 className="text-sm font-bold text-purple-900 mb-3 uppercase tracking-wide">Booster / Product</h3>
-                            <input
-                                type="text"
-                                value={localBoosterName}
-                                onChange={(e) => setLocalBoosterName(e.target.value)}
-                                placeholder="e.g. 151, Lost Origin, ETB..."
-                                className="block w-full px-3 py-2 border border-purple-200 rounded-lg leading-5 bg-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
-                            />
-                        </section>
-                    </div>
-                )}
-
-                {/* 3. Era & Set (Dynamic from API) */}
+                {/* Series & Set */}
                 <section>
                     <div className="flex justify-between items-end mb-3">
                         <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Series & Set</h3>
@@ -760,9 +633,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                             </button>
                         )}
                     </div>
-                    
                     <div className="space-y-4">
-                        {/* Series Selection - Multi Select Pills */}
                         <div>
                             <label className="block text-xs font-medium text-gray-500 mb-2">Era / Series</label>
                             <div className="flex flex-wrap gap-2">
@@ -784,77 +655,37 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 })}
                             </div>
                         </div>
-
-                        {/* Sets Selection - Multi Select Checkbox List */}
                         <div>
                             <label className="block text-xs font-medium text-gray-500 mb-2">Set / Expansion</label>
                             <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-gray-50 p-2 space-y-1 custom-scrollbar">
-                                {visibleSets.length === 0 ? (
-                                    <div className="text-xs text-gray-400 text-center py-4">No sets available</div>
-                                ) : (
-                                    visibleSets.map(set => (
-                                        <label key={set.id} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-white rounded-md transition-colors">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={localSet.has(set.id)}
-                                                onChange={() => {
-                                                    toggleFilter(set.id, setLocalSet);
-                                                    // Optional: If auto-selecting series is desired when checking a set
-                                                    // But multi-select logic usually implies independent control or strict hierarchy
-                                                    if (!localSeries.has(set.series)) {
-                                                        setLocalSeries(prev => new Set(prev).add(set.series));
-                                                    }
-                                                }}
-                                                className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-xs font-bold text-gray-700 truncate">{set.name}</div>
-                                                <div className="text-[10px] text-gray-400 flex justify-between">
-                                                    <span>{set.series}</span>
-                                                    <span>{set.total} cards</span>
-                                                </div>
+                                {visibleSets.map(set => (
+                                    <label key={set.id} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-white rounded-md transition-colors">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={localSet.has(set.id)}
+                                            onChange={() => {
+                                                toggleFilter(set.id, setLocalSet);
+                                                if (!localSeries.has(set.series)) {
+                                                    setLocalSeries(prev => new Set(prev).add(set.series));
+                                                }
+                                            }}
+                                            className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-xs font-bold text-gray-700 truncate">{set.name}</div>
+                                            <div className="text-[10px] text-gray-400 flex justify-between">
+                                                <span>{set.series}</span>
+                                                <span>{set.total} cards</span>
                                             </div>
-                                        </label>
-                                    ))
-                                )}
+                                        </div>
+                                    </label>
+                                ))}
                             </div>
                         </div>
                     </div>
                 </section>
 
-                {/* 4. Price Range */}
-                <section>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">
-                        {appMode === AppMode.BREAKS ? 'Entry Price ($)' : 'Price Range ($)'}
-                    </h3>
-                    <div className="flex items-center gap-2">
-                        <div className="relative flex-1">
-                            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
-                            <input 
-                                type="number" 
-                                placeholder="Min" 
-                                value={localPriceMin} 
-                                onChange={(e) => setLocalPriceMin(e.target.value)}
-                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 pl-6 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                                aria-label="Min Price"
-                            />
-                        </div>
-                        <span className="text-gray-400 font-medium">-</span>
-                        <div className="relative flex-1">
-                            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
-                            <input 
-                                type="number" 
-                                placeholder="Max" 
-                                value={localPriceMax} 
-                                onChange={(e) => setLocalPriceMax(e.target.value)}
-                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 pl-6 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                                aria-label="Max Price"
-                            />
-                        </div>
-                    </div>
-                </section>
-
-                {/* 6. Pokemon Types (Chips) */}
+                {/* Pokemon Types */}
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Pokemon Type</h3>
                     <div className="grid grid-cols-3 gap-2">
@@ -879,34 +710,26 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </div>
                 </section>
 
-                {/* 7. Card Categories */}
+                {/* Categories & Variants */}
                 <section>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Card Category</h3>
-                    <div className="flex flex-wrap gap-2">
-                         {Object.values(CardCategory).map(cat => {
-                             const isSelected = localCardCategories.has(cat);
-                             return (
-                                 <button
-                                    type="button"
-                                    key={cat}
-                                    onClick={() => toggleFilter(cat, setLocalCardCategories)}
-                                    aria-pressed={isSelected}
-                                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                                        isSelected
-                                        ? 'bg-gray-900 text-white border-gray-900'
-                                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                                    }`}
-                                 >
-                                     {cat}
-                                 </button>
-                             );
-                         })}
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Category & Rarity</h3>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                         {Object.values(CardCategory).map(cat => (
+                             <button
+                                type="button"
+                                key={cat}
+                                onClick={() => toggleFilter(cat, setLocalCardCategories)}
+                                aria-pressed={localCardCategories.has(cat)}
+                                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                                    localCardCategories.has(cat)
+                                    ? 'bg-gray-900 text-white border-gray-900'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                }`}
+                             >
+                                 {cat}
+                             </button>
+                         ))}
                     </div>
-                </section>
-
-                {/* 8. Variant Tags */}
-                <section>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Rarity & Variants</h3>
                     <div className="grid grid-cols-2 gap-2">
                          {Object.values(VariantTag).map(tag => (
                              <label key={tag} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-gray-50 rounded-md transition-colors border border-transparent hover:border-gray-200 focus-within:ring-2 focus-within:ring-primary-500">
@@ -925,30 +748,56 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </div>
                 </section>
 
-                {/* 9. Grading Company - Moved to always visible since often requested */}
+                {/* Grading Company */}
                 <section>
-                        <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Grading Company</h3>
-                        <div className="flex flex-wrap gap-2">
-                        {Object.values(GradingCompany).map(company => {
-                            const isSelected = localGradingCompany.has(company);
-                            return (
-                                <button
-                                    type="button"
-                                    key={company}
-                                    onClick={() => toggleFilter(company, setLocalGradingCompany)}
-                                    aria-pressed={isSelected}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                                        isSelected ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                                    }`}
-                                >
-                                    {company}
-                                </button>
-                            );
-                        })}
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Grading</h3>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                    {Object.values(GradingCompany).map(company => {
+                        const isSelected = localGradingCompany.has(company);
+                        return (
+                            <button
+                                type="button"
+                                key={company}
+                                onClick={() => toggleFilter(company, setLocalGradingCompany)}
+                                aria-pressed={isSelected}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                                    isSelected ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                                }`}
+                            >
+                                {company}
+                            </button>
+                        );
+                    })}
+                    </div>
+
+                    {/* NEW: Grades Sub-section */}
+                    {(localCategory === ProductCategory.GRADED_CARD || localGradingCompany.size > 0 || !localCategory) && (
+                        <div className="pt-2 border-t border-gray-100 border-dashed">
+                            <h4 className="text-xs font-bold text-gray-500 mb-2 uppercase mt-2">Grade / Score</h4>
+                            <div className="grid grid-cols-4 gap-2">
+                                {COMMON_GRADES.map(g => {
+                                    const isSelected = localGrades.has(g);
+                                    return (
+                                        <button
+                                            key={g}
+                                            type="button"
+                                            onClick={() => toggleFilter(g, setLocalGrades)}
+                                            className={`px-1 py-2 rounded text-xs font-bold border transition-colors ${
+                                                isSelected 
+                                                ? 'bg-blue-600 text-white border-blue-600' 
+                                                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {g}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
+                    )}
                 </section>
 
-                {/* 10. Conditional Fields based on Category */}
+                {/* Conditional Fields */}
                 {localCategory === ProductCategory.RAW_CARD && (
                     <section>
                          <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Condition</h3>
@@ -994,6 +843,36 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                          </div>
                     </section>
                 )}
+
+                {/* Price Range */}
+                <section>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">
+                        {appMode === AppMode.BREAKS ? 'Entry Price ($)' : 'Price Range ($)'}
+                    </h3>
+                    <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+                            <input 
+                                type="number" 
+                                placeholder="Min" 
+                                value={localPriceMin} 
+                                onChange={(e) => setLocalPriceMin(e.target.value)}
+                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 pl-6 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            />
+                        </div>
+                        <span className="text-gray-400 font-medium">-</span>
+                        <div className="relative flex-1">
+                            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+                            <input 
+                                type="number" 
+                                placeholder="Max" 
+                                value={localPriceMax} 
+                                onChange={(e) => setLocalPriceMax(e.target.value)}
+                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 pl-6 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                            />
+                        </div>
+                    </div>
+                </section>
             </div>
 
             <div className="p-4 border-t border-gray-200 bg-gray-50 sticky bottom-0 z-30">

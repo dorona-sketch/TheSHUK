@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { 
     Listing, ListingType, User, FilterState, SearchScope, SortOption, 
@@ -29,13 +30,15 @@ export const useMarketplaceStore = (
         variantTags: [],
         condition: [],
         gradingCompany: [],
+        grades: [], // Initialize grades
         sealedProductType: [],
         breakStatus: [],
         pokemonName: '',
         language: '',
         series: [],
         set: [],
-        boosterName: ''
+        boosterName: '',
+        category: undefined 
     });
 
     const filteredListings = useMemo(() => {
@@ -63,24 +66,54 @@ export const useMarketplaceStore = (
             });
         }
 
-        if (filters.pokemonName) result = result.filter(l => l.pokemonName?.toLowerCase().includes(filters.pokemonName.toLowerCase()));
+        if (filters.pokemonName) result = result.filter(l => l.pokemonName?.toLowerCase().includes(filters.pokemonName!.toLowerCase()));
         if (filters.language) result = result.filter(l => l.language === filters.language);
         if (filters.boosterName) {
             const bn = filters.boosterName.toLowerCase();
             result = result.filter(l => l.boosterName?.toLowerCase().includes(bn) || l.openedProduct?.productName.toLowerCase().includes(bn));
         }
 
+        // Apply Product Category Filter
+        if (filters.category) {
+            result = result.filter(l => l.category === filters.category);
+        }
+
         if (filters.series.length > 0) result = result.filter(l => l.series && filters.series.includes(l.series));
         if (filters.set.length > 0) result = result.filter(l => l.setId && filters.set.includes(l.setId));
-        if (filters.pokemonTypes.length > 0) result = result.filter(l => l.pokemonType && filters.pokemonTypes.includes(l.pokemonType));
-        if (filters.cardCategories.length > 0) result = result.filter(l => l.cardCategory && filters.cardCategories.includes(l.cardCategory));
+        
+        // Strict Filter Logic Updates
+        if (filters.pokemonTypes.length > 0) {
+            result = result.filter(l => {
+                const type = l.pokemonType;
+                if (!type) return false;
+                return filters.pokemonTypes.some(t => t.trim() === type.trim());
+            });
+        }
+        
+        if (filters.cardCategories.length > 0) {
+            result = result.filter(l => {
+                const cat = l.cardCategory;
+                if (!cat) return false;
+                return filters.cardCategories.some(c => c.trim() === cat.trim());
+            });
+        }
         
         if (filters.variantTags.length > 0) {
-            result = result.filter(l => l.variantTags && filters.variantTags.some((t: any) => l.variantTags?.includes(t)));
+            result = result.filter(l => {
+                const tags = l.variantTags;
+                if (!tags || tags.length === 0) return false;
+                return filters.variantTags.some(filterTag => 
+                    tags.some(listingTag => listingTag.trim() === filterTag.trim())
+                );
+            });
         }
 
         if (filters.condition.length > 0) result = result.filter(l => l.condition && filters.condition.includes(l.condition));
+        
+        // Grading filters
         if (filters.gradingCompany.length > 0) result = result.filter(l => l.gradingCompany && filters.gradingCompany.includes(l.gradingCompany));
+        if (filters.grades.length > 0) result = result.filter(l => l.grade && filters.grades.includes(l.grade.toString()));
+
         if (filters.sealedProductType.length > 0) result = result.filter(l => l.sealedProductType && filters.sealedProductType.includes(l.sealedProductType));
         if (filters.breakStatus.length > 0) result = result.filter(l => l.breakStatus && filters.breakStatus.includes(l.breakStatus));
 
@@ -115,13 +148,15 @@ export const useMarketplaceStore = (
             variantTags: [],
             condition: [],
             gradingCompany: [],
+            grades: [], // Reset grades
             sealedProductType: [],
             breakStatus: [],
             pokemonName: '',
             language: '',
             series: [],
             set: [],
-            boosterName: ''
+            boosterName: '',
+            category: undefined
         });
     };
 
@@ -163,7 +198,22 @@ export const useMarketplaceStore = (
 
     const placeBid = (listingId: string, amount: number) => {
         if (!currentUser) return { success: false, message: 'Please sign in' };
-        if (amount > currentUser.walletBalance) return { success: false, message: 'Insufficient funds' };
+        
+        const listing = listings.find(l => l.id === listingId);
+        if (!listing) return { success: false, message: 'Listing not found' };
+        
+        // Strict Validation
+        if (listing.sellerId === currentUser.id) return { success: false, message: 'Cannot bid on your own listing' };
+        // MVP: Relaxed balance check for demo purposes
+        // if (amount > currentUser.walletBalance) return { success: false, message: 'Insufficient funds' };
+        
+        if (listing.type !== ListingType.AUCTION) return { success: false, message: 'Not an auction' };
+        if (listing.isSold) return { success: false, message: 'Auction already ended' };
+        
+        // Check Expiry
+        if (listing.endsAt && new Date() > new Date(listing.endsAt)) {
+            return { success: false, message: 'Auction has expired' };
+        }
         
         const bid: Bid = {
             id: `b_${Date.now()}`,
@@ -187,8 +237,16 @@ export const useMarketplaceStore = (
         if (!currentUser) return { success: false, message: 'Please sign in' };
         const listing = listings.find(l => l.id === listingId);
         if (!listing) return { success: false, message: 'Listing not found' };
-        if (listing.price > currentUser.walletBalance) return { success: false, message: 'Insufficient funds' };
+        if (listing.isSold) return { success: false, message: 'Item already sold' };
         
+        // MVP: Relaxed balance check for demo purposes
+        // if (listing.price > currentUser.walletBalance) return { success: false, message: 'Insufficient funds' };
+        
+        // Ensure it's purchasable
+        if (listing.type === ListingType.AUCTION && listing.endsAt && new Date() > new Date(listing.endsAt)) {
+             return { success: false, message: 'Listing has ended' };
+        }
+
         updateListing(listingId, { isSold: true });
         
         const tx: WalletTransaction = {

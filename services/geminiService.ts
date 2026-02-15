@@ -1,9 +1,8 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { getEnv } from '../utils/env';
 
 const getClient = () => {
-  const apiKey = getEnv('API_KEY');
+  const apiKey = process.env.API_KEY;
   
   if (!apiKey) {
     console.warn("API_KEY is missing. AI features will return mock data.");
@@ -70,19 +69,19 @@ export const getLocationInfo = async (location: string): Promise<{ text: string,
   }
 };
 
-// --- Visual Identification (Fallback) ---
-export const identifyCardVisual = async (base64Image: string): Promise<{ cardName: string, setName: string, number: string, rarity: string } | null> => {
+// --- Visual Identification (Core) ---
+export const identifyCardFromImage = async (base64Image: string): Promise<{ cardName: string, setName: string, number: string, rarity: string } | null> => {
     const client = getClient();
     if (!client) return null;
 
     try {
-        console.time("Gemini:VisualID");
+        console.time("Gemini:IdentifyCard");
         const response = await client.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
-                    { text: `Identify this Pokemon card details. Return JSON.` }
+                    { text: `Identify this Pokemon card details. Return JSON with cardName, setName, number, and rarity.` }
                 ]
             },
             config: {
@@ -99,7 +98,7 @@ export const identifyCardVisual = async (base64Image: string): Promise<{ cardNam
                 }
             }
         });
-        console.timeEnd("Gemini:VisualID");
+        console.timeEnd("Gemini:IdentifyCard");
         
         const rawText = response.text;
         return JSON.parse(cleanJson(rawText));

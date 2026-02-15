@@ -518,6 +518,7 @@ export interface FilterState {
   variantTags: VariantTag[];
   condition: Condition[];
   gradingCompany: GradingCompany[];
+  grades: string[]; // NEW: Added support for specific grade filtering
   sealedProductType: SealedProductType[];
   breakStatus: BreakStatus[];
   pokemonName?: string;

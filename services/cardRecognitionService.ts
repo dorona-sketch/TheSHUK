@@ -1,7 +1,7 @@
 
 import { IdentificationResult, CardCandidate, PokemonType, CardCategory, VariantTag, CardTypeTag, CategoryTag } from '../types';
-import { cropImageCorners, binarizeBase64, extractIDStrips, computeDHash, calculateHammingDistance, autoCropCard } from '../utils/imageProcessing';
-import { performOcrOnCorners, identifyCardVisual } from './geminiService';
+import { cropImageCorners, binarizeBase64, extractIDStrips, computeDHash, calculateHammingDistance } from '../utils/imageProcessing';
+import { performOcrOnCorners, identifyCardFromImage } from './geminiService';
 import { searchCardByCollectorNumber, getCardPrice, fetchSetChaseCard } from './tcgApiService';
 
 export const CardRecognitionService = {
@@ -23,8 +23,6 @@ export const CardRecognitionService = {
         console.log("Stage 1: Pre-processing (Assumes ROI)...");
         // NOTE: We do NOT call autoCropCard here anymore. 
         // The UI handles cropping (auto or manual) before calling identify.
-        // However, for HostControls live scan, we might pass a raw frame. 
-        // Ideally HostControls should also use autoCropCard first.
         // We assume `base64Image` is the best available crop.
 
         const { leftCorner, rightCorner } = await cropImageCorners(base64Image);
@@ -45,60 +43,38 @@ export const CardRecognitionService = {
         let rawId = (ocrResult.normalized || '').replace(/\s+/g, '').toUpperCase();
         
         // Heuristic character fix for numbers (often OCR reads 058 as O58)
-        // We only replace O/I/l if they are mixed with numbers in a way that suggests they are digits
         rawId = rawId.replace(/O/g, '0').replace(/[Il]/g, '1');
 
         // 3. API Lookup Stage (Parsing Logic)
         if (rawId && ocrResult.confidence > 0.4) {
             console.log("Stage 3: Parsing ID", rawId);
             
-            // Regex Strategy:
-            
-            // 1. Subsets with Denominator (e.g. TG13/TG30, RC5/RC32)
-            // Matches [Letters][Numbers]/[Letters][Numbers]
             const subsetFullMatch = rawId.match(/^([A-Z]{1,3})(\d+)\/([A-Z]{1,3})?(\d+)$/);
-            
-            // 2. Subsets with Missing Denominator Prefix (e.g. TG13/30)
             const subsetMixedMatch = rawId.match(/^([A-Z]{1,3})(\d+)\/(\d+)$/);
-
-            // 3. Standard Fraction (e.g. 058/102, 5/18)
             const fractionMatch = rawId.match(/^(\d+)\/(\d+)([A-Z]+)?$/);
-            
-            // 4. Promo / Simple ID (e.g. SWSH123, SVP001, TG05)
-            // Matches [Letters][Numbers]
             const promoMatch = rawId.match(/^([A-Z]{2,5})[-]?(\d+)$/);
 
             try {
                 if (subsetFullMatch) {
-                    // e.g. TG13/TG30 -> Prefix=TG, Num=13
                     const prefix = subsetFullMatch[1];
                     const num = subsetFullMatch[2];
                     const fullId = `${prefix}${num}`;
-                    const total = subsetFullMatch[4];
-                    console.log("Matched Subset Pattern A:", fullId, "Total:", total);
                     candidates = await searchCardByCollectorNumber(fullId, undefined, prefix);
                 } else if (subsetMixedMatch) {
-                    // e.g. TG13/30 -> Prefix=TG, Num=13
                     const prefix = subsetMixedMatch[1];
                     const num = subsetMixedMatch[2];
                     const fullId = `${prefix}${num}`;
                     const total = subsetMixedMatch[3];
-                    console.log("Matched Subset Pattern B:", fullId, "Total:", total);
                     candidates = await searchCardByCollectorNumber(fullId, total, prefix);
                 } else if (fractionMatch) {
-                    // e.g. 058/102 -> Num=058, Total=102
                     const number = fractionMatch[1];
                     const total = fractionMatch[2];
-                    console.log("Matched Fraction Pattern:", { number, total });
                     candidates = await searchCardByCollectorNumber(number, total);
                 } else if (promoMatch) {
-                    // e.g. SWSH123 -> Prefix=SWSH, Num=123
                     const prefix = promoMatch[1];
-                    const num = promoMatch[2];
-                    console.log("Matched Promo/Simple Pattern:", { prefix, num, raw: rawId });
+                    const rawNum = promoMatch[2];
                     candidates = await searchCardByCollectorNumber(rawId, undefined, prefix);
                 } else {
-                    console.log("Fallback: Raw String Search");
                     candidates = await searchCardByCollectorNumber(rawId);
                 }
             } catch (e) {
@@ -117,10 +93,11 @@ export const CardRecognitionService = {
             finalCandidates.push(...variants);
         });
 
-        // --- NEW: Visual AI Fallback ---
+        // --- VISUAL AI FALLBACK ---
+        // If API lookup returned nothing (or OCR failed), ask Gemini to identify the card visually
         if (finalCandidates.length === 0) {
             console.log("Stage 3.5: Fallback to Visual AI...");
-            const aiData = await identifyCardVisual(base64Image);
+            const aiData = await identifyCardFromImage(base64Image);
             
             if (aiData && aiData.cardName) {
                 // Try to find it in API via name + number (if available) to get pricing metadata
@@ -136,14 +113,14 @@ export const CardRecognitionService = {
                         finalCandidates.push(...expandVariants(apiCard));
                     });
                 } else {
-                    // Manual Candidate from AI Data
+                    // Manual Candidate from AI Data (if API fails completely)
                     finalCandidates.push({
                         cardName: aiData.cardName,
                         pokemonName: aiData.cardName,
                         setName: aiData.setName,
                         number: aiData.number,
                         rarity: aiData.rarity,
-                        confidence: 0.7,
+                        confidence: 0.7, // Visual AI confidence default
                         matchSource: 'visual_ai',
                         language: 'English',
                         releaseYear: '',
@@ -165,7 +142,7 @@ export const CardRecognitionService = {
             console.log("Stage 4: Ambiguous matches detected. Running Visual Tie-Break...");
             finalCandidates = await this.performVisualTieBreak(`data:${mimeType};base64,${base64Image}`, finalCandidates);
             
-            // UPDATE: Refine confidence based on visual similarity score
+            // Refine confidence based on visual similarity score
             if (finalCandidates[0].visualSimilarity !== undefined) {
                 finalCandidates.forEach(c => {
                     const visualScore = c.visualSimilarity || 0;
@@ -175,8 +152,6 @@ export const CardRecognitionService = {
                 // Re-sort by final confidence to ensure best match is first
                 finalCandidates.sort((a, b) => b.confidence - a.confidence);
             }
-        } else {
-            console.log("Stage 4: Skipped (Single or No candidate)");
         }
 
         console.timeEnd("Total Pipeline Time");
@@ -201,27 +176,19 @@ export const CardRecognitionService = {
      */
     async performVisualTieBreak(userImageUrl: string, candidates: CardCandidate[]): Promise<CardCandidate[]> {
         try {
-            console.groupCollapsed("Visual Tie-Break Details");
-            
             // 1. Extract & Hash User Strips
             const userStrips = await extractIDStrips(userImageUrl);
-            if (!userStrips.bl || !userStrips.br) {
-                console.warn("Failed to extract user image strips");
-                console.groupEnd();
-                return candidates; 
-            }
+            if (!userStrips.bl || !userStrips.br) return candidates; 
 
             const userHashBL = computeDHash(userStrips.bl);
             const userHashBR = computeDHash(userStrips.br);
             
             // 2. Compare against candidates
             const scoredCandidates = await Promise.all(candidates.map(async (c) => {
-                // If candidate has no image, apply penalty but don't fail
                 if (!c.imageUrl) return { ...c, distance: 1000, visualSimilarity: 0 };
 
                 try {
                     const cStrips = await extractIDStrips(c.imageUrl); 
-                    // If we can't get strips from API image, treat as low match
                     if (!cStrips.bl || !cStrips.br) return { ...c, distance: 1000, visualSimilarity: 0 };
 
                     const cHashBL = computeDHash(cStrips.bl);
@@ -242,7 +209,6 @@ export const CardRecognitionService = {
                         _debug: { distBL, distBR }
                     };
                 } catch (e) {
-                    console.warn("Tie-break hash failed for candidate", c.id);
                     return { ...c, distance: 1000, visualSimilarity: 0 };
                 }
             }));
@@ -250,46 +216,29 @@ export const CardRecognitionService = {
             // 3. Sort by Similarity (Descending)
             scoredCandidates.sort((a, b) => (b.visualSimilarity || 0) - (a.visualSimilarity || 0));
 
-            console.table(scoredCandidates.map(c => ({
-                name: c.cardName,
-                variant: c.variant,
-                similarity: (c.visualSimilarity || 0).toFixed(4),
-                dist: (c.distance || 0).toFixed(2)
-            })));
-            console.groupEnd();
-
             return scoredCandidates;
 
         } catch (e) {
             console.error("ROI Tie-break failed", e);
-            console.groupEnd();
             return candidates;
         }
     },
 
     /**
      * Determines if a card is the 'Chase' card of its set.
-     * Logic: Matches set chase card ID.
      */
     async analyzeChaseStatus(card: CardCandidate): Promise<{ isChase: boolean, price: number }> {
         if (!card.id || !card.setId) return { isChase: false, price: 0 };
 
         try {
-            // Priority: Use the price estimate for the specific variant (e.g. Holo vs Normal)
             let price = card.priceEstimate || 0;
             
-            // If estimate missing (e.g. newly added variant logic), fetch fresh
             if (!price) {
                 const priceData = await getCardPrice(card.id, card.variant);
                 price = priceData?.market || 0;
             }
 
             const setChase = await fetchSetChaseCard(card.setId);
-            
-            // Criteria: 
-            // 1. ID Match: Is this card ID the same as the most expensive card in the set?
-            // Note: We avoid arbitrary dollar thresholds to be purely deterministic based on set ranking.
-            
             const isIdMatch = setChase && setChase.id === card.id;
 
             return { 
@@ -298,7 +247,6 @@ export const CardRecognitionService = {
             };
 
         } catch (e) {
-            console.error("Chase analysis failed", e);
             return { isChase: false, price: 0 };
         }
     }
@@ -398,7 +346,6 @@ const expandVariants = (apiCard: any): CardCandidate[] => {
     
     if (prices.holofoil) {
         // Special rarities often use 'holofoil' bucket but deserve better names
-        // If the card is already special (e.g. SIR), we prefer that label over just 'Holofoil'
         const variantName = base.categoryTag ? base.categoryTag : (base.rarity || 'Holofoil');
         variants.push({ ...base, variant: variantName, priceEstimate: prices.holofoil.market });
     }
@@ -424,7 +371,6 @@ const expandVariants = (apiCard: any): CardCandidate[] => {
     }
 
     if (variants.length === 0) {
-        // Fallback if price object exists but specific keys don't match known ones
         variants.push({ ...base, variant: base.rarity, priceEstimate: undefined });
     }
 

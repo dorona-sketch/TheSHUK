@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
     Listing, ListingType, User, BreakEntry, BreakStatus, BreakEntryStatus, 
@@ -32,55 +33,69 @@ export const useBreaksStore = (
     const joinBreak = async (listingId: string) => {
         if (!currentUser) return { success: false, message: 'Please sign in' };
         
-        const listing = marketplace.listings.find(l => l.id === listingId);
-        if (!listing) return { success: false, message: 'Listing not found' };
-        if (listing.type !== ListingType.TIMED_BREAK) return { success: false, message: 'Not a break' };
+        // 1. Optimistic Pre-flight Checks (Read-only)
+        const optimisticListing = marketplace.listings.find(l => l.id === listingId);
+        if (!optimisticListing) return { success: false, message: 'Listing not found' };
+        if (optimisticListing.type !== ListingType.TIMED_BREAK) return { success: false, message: 'Not a break' };
         
-        if (listing.breakStatus !== BreakStatus.OPEN) {
-            return { success: false, message: 'Break is not open for joining.' };
-        }
-        
-        if ((listing.currentParticipants || 0) >= (listing.targetParticipants || 0)) {
-            return { success: false, message: 'Break is already full.' };
-        }
-
-        const price = listing.price;
+        // Check local state of budget
+        const price = optimisticListing.price;
         if (currentUser.walletBalance < price) return { success: false, message: 'Insufficient funds' };
         
+        // Check entry limits
         const currentEntries = breakEntries.filter(e => e.listingId === listingId && e.userId === currentUser.id);
-        if (listing.maxEntriesPerUser && currentEntries.length >= listing.maxEntriesPerUser) {
-             return { success: false, message: `Max entries (${listing.maxEntriesPerUser}) reached.` };
+        if (optimisticListing.maxEntriesPerUser && currentEntries.length >= optimisticListing.maxEntriesPerUser) {
+             return { success: false, message: `Max entries (${optimisticListing.maxEntriesPerUser}) reached.` };
         }
 
-        // --- ATOMIC UPDATE SIMULATION ---
-        let transactionSuccess = false;
-        let isFull = false;
+        // 2. Atomic Update & State Transition
+        // We calculate success/failure INSIDE the setState callback to handle concurrency simulations correctly
+        let joinResult: { success: boolean; message: string; isFull: boolean } = { success: false, message: 'Failed to join', isFull: false };
 
-        marketplace.setListings(prev => prev.map(l => {
-            if (l.id === listingId) {
-                if (l.breakStatus !== BreakStatus.OPEN) return l;
-                const currentCount = l.currentParticipants || 0;
-                const target = l.targetParticipants || 0;
-                
-                if (currentCount >= target) return l;
+        marketplace.setListings(prevListings => {
+            return prevListings.map(l => {
+                if (l.id === listingId) {
+                    // Strict Guard: Must be OPEN
+                    if (l.breakStatus !== BreakStatus.OPEN) {
+                        joinResult = { success: false, message: 'Break is no longer open.', isFull: false };
+                        return l;
+                    }
 
-                transactionSuccess = true;
-                const newCount = currentCount + 1;
-                isFull = newCount >= target;
+                    const current = l.currentParticipants || 0;
+                    const target = l.targetParticipants || 0;
 
-                return {
-                    ...l,
-                    currentParticipants: newCount,
-                    breakStatus: isFull ? BreakStatus.FULL_PENDING_SCHEDULE : BreakStatus.OPEN
-                };
-            }
-            return l;
-        }));
+                    // Strict Guard: Capacity
+                    if (current >= target) {
+                        joinResult = { success: false, message: 'Break is full.', isFull: true };
+                        return l;
+                    }
 
-        if (!transactionSuccess) {
-            return { success: false, message: 'Failed to join: Break is full or unavailable.' };
+                    // Success Path
+                    const newCount = current + 1;
+                    const isFull = newCount >= target;
+                    
+                    joinResult = { 
+                        success: true, 
+                        message: isFull ? 'Spot secured! Break is now FULL.' : 'Spot secured (Funds Authorized)', 
+                        isFull 
+                    };
+
+                    return {
+                        ...l,
+                        currentParticipants: newCount,
+                        breakStatus: isFull ? BreakStatus.FULL_PENDING_SCHEDULE : BreakStatus.OPEN
+                    };
+                }
+                return l;
+            });
+        });
+
+        if (!joinResult.success) {
+            return { success: false, message: joinResult.message };
         }
         
+        // 3. Post-Success Actions (Wallet & Entries)
+        // Only executed if the atomic update above succeeded
         const authExpiresAt = new Date();
         authExpiresAt.setDate(authExpiresAt.getDate() + 7); 
 
@@ -90,7 +105,7 @@ export const useBreaksStore = (
             userId: currentUser.id,
             userName: currentUser.name,
             userAvatar: currentUser.avatarUrl,
-            status: isFull ? BreakEntryStatus.CHARGED : BreakEntryStatus.AUTHORIZED, 
+            status: joinResult.isFull ? BreakEntryStatus.CHARGED : BreakEntryStatus.AUTHORIZED, 
             joinedAt: new Date(),
             authExpiresAt
         };
@@ -100,7 +115,7 @@ export const useBreaksStore = (
             userId: currentUser.id,
             amount: -price,
             type: TransactionType.PURCHASE, 
-            description: isFull ? `Purchase: ${listing.title}` : `Auth Hold: ${listing.title}`,
+            description: joinResult.isFull ? `Purchase: ${optimisticListing.title}` : `Auth Hold: ${optimisticListing.title}`,
             balanceAfter: currentUser.walletBalance - price,
             createdAt: new Date(),
             referenceId: listingId,
@@ -111,7 +126,8 @@ export const useBreaksStore = (
         wallet.setTransactions(prev => [tx, ...prev]);
         updateProfile({ walletBalance: tx.balanceAfter });
 
-        if (isFull) {
+        // If the break filled, finalize all other AUTHORIZED entries to CHARGED
+        if (joinResult.isFull) {
             setBreakEntries(prev => prev.map(e => {
                 if (e.listingId === listingId && e.status === BreakEntryStatus.AUTHORIZED) {
                     return { ...e, status: BreakEntryStatus.CHARGED };
@@ -119,11 +135,12 @@ export const useBreaksStore = (
                 return e;
             }));
 
+            // Notifications
             const sellerNotification: Notification = {
                 id: `n_full_${Date.now()}`,
-                userId: listing.sellerId,
+                userId: optimisticListing.sellerId,
                 title: 'Break Full!',
-                message: `Your break "${listing.title}" has filled. Please schedule the live stream.`,
+                message: `Your break "${optimisticListing.title}" has filled. Please schedule the live stream.`,
                 type: 'BREAK_FULL',
                 isRead: false,
                 createdAt: new Date(),
@@ -134,7 +151,7 @@ export const useBreaksStore = (
                 id: `n_join_${Date.now()}`,
                 userId: currentUser.id,
                 title: 'Break Full!',
-                message: `The break "${listing.title}" is full and will be scheduled soon.`,
+                message: `The break "${optimisticListing.title}" is full and will be scheduled soon.`,
                 type: 'BREAK_FULL',
                 isRead: false,
                 createdAt: new Date(),
@@ -144,15 +161,16 @@ export const useBreaksStore = (
             notifications.setNotifications(prev => [sellerNotification, buyerNotification, ...prev]);
         }
 
-        return { success: true, message: isFull ? 'Spot secured! Break is now FULL.' : 'Spot secured (Funds Authorized)' };
+        return { success: true, message: joinResult.message };
     };
 
     const scheduleBreak = (listingId: string, date: Date, link: string) => {
         const listing = marketplace.listings.find(l => l.id === listingId);
         if (!listing) return { success: false, message: 'Listing not found' };
 
+        // State Guard
         if (listing.breakStatus !== BreakStatus.FULL_PENDING_SCHEDULE) {
-             return { success: false, message: 'Can only schedule breaks that are full.' };
+             return { success: false, message: 'Break must be FULL to schedule.' };
         }
 
         marketplace.updateListing(listingId, { 
@@ -181,8 +199,9 @@ export const useBreaksStore = (
         const listing = marketplace.listings.find(l => l.id === listingId);
         if (!listing) return;
 
+        // State Guard
         if (listing.breakStatus !== BreakStatus.SCHEDULED && listing.breakStatus !== BreakStatus.FULL_PENDING_SCHEDULE) {
-            console.warn("Invalid transition to LIVE");
+            console.warn(`Cannot start break. Invalid status: ${listing.breakStatus}`);
             return;
         }
 
@@ -205,7 +224,11 @@ export const useBreaksStore = (
 
     const completeBreak = (listingId: string, media: string[], notes: string) => {
         const listing = marketplace.listings.find(l => l.id === listingId);
-        if (listing?.breakStatus !== BreakStatus.LIVE) return;
+        // State Guard
+        if (listing?.breakStatus !== BreakStatus.LIVE) {
+            console.warn("Cannot complete break: Not currently LIVE.");
+            return;
+        }
 
         marketplace.updateListing(listingId, { 
             breakStatus: BreakStatus.COMPLETED,
@@ -217,25 +240,36 @@ export const useBreaksStore = (
     };
 
     const cancelBreak = (listingId: string) => {
+        const listing = marketplace.listings.find(l => l.id === listingId);
+        if (!listing) return;
+        
+        // Prevent cancelling if already completed to avoid refunding completed services
+        if (listing.breakStatus === BreakStatus.COMPLETED) {
+            console.warn("Cannot cancel a completed break.");
+            return;
+        }
+
         marketplace.updateListing(listingId, { breakStatus: BreakStatus.CANCELLED });
         const entries = breakEntries.filter(e => e.listingId === listingId);
-        const listing = marketplace.listings.find(l => l.id === listingId);
-        const refundAmount = listing?.price || 0;
+        const refundAmount = listing.price || 0;
         
         entries.forEach(e => {
-            const tx: WalletTransaction = {
-                id: `tx_ref_${Date.now()}_${e.userId}`,
-                userId: e.userId,
-                amount: refundAmount,
-                type: TransactionType.REFUND,
-                description: `Refund: ${listing?.title}`,
-                balanceAfter: 0, 
-                createdAt: new Date(),
-                referenceId: listingId
-            };
-            wallet.setTransactions(prev => [tx, ...prev]);
-            if (currentUser?.id === e.userId) {
-                updateProfile({ walletBalance: (currentUser.walletBalance || 0) + refundAmount });
+            // Only refund if they haven't already been refunded/cancelled
+            if (e.status !== BreakEntryStatus.CANCELLED && e.status !== BreakEntryStatus.REFUNDED) {
+                const tx: WalletTransaction = {
+                    id: `tx_ref_${Date.now()}_${e.userId}`,
+                    userId: e.userId,
+                    amount: refundAmount,
+                    type: TransactionType.REFUND,
+                    description: `Refund: ${listing.title}`,
+                    balanceAfter: 0, // Placeholder, updated in profile
+                    createdAt: new Date(),
+                    referenceId: listingId
+                };
+                wallet.setTransactions(prev => [tx, ...prev]);
+                if (currentUser?.id === e.userId) {
+                    updateProfile({ walletBalance: (currentUser.walletBalance || 0) + refundAmount });
+                }
             }
         });
         setBreakEntries(prev => prev.map(e => e.listingId === listingId ? { ...e, status: BreakEntryStatus.CANCELLED } : e));
@@ -248,6 +282,7 @@ export const useBreaksStore = (
         const listing = marketplace.listings.find(l => l.id === entry.listingId);
         if (!listing) return { success: false, message: 'Listing not found' };
 
+        // State Guard: Can only leave if Open or Full(Pending). Cannot leave if Live or Completed.
         if (listing.breakStatus !== BreakStatus.OPEN && listing.breakStatus !== BreakStatus.FULL_PENDING_SCHEDULE) {
             return { success: false, message: 'Cannot leave break at this stage (Locked/Live/Ended).' };
         }
@@ -270,12 +305,14 @@ export const useBreaksStore = (
 
         setBreakEntries(prev => prev.filter(e => e.id !== entryId));
         
+        // Revert Listing State (Atomic-ish)
         marketplace.setListings(prev => prev.map(l => {
             if (l.id === listing.id) {
+                // Determine new status. If we were FULL/SCHEDULED, removing one means we are now OPEN
                 return {
                     ...l,
                     currentParticipants: Math.max(0, (l.currentParticipants || 1) - 1),
-                    breakStatus: BreakStatus.OPEN
+                    breakStatus: BreakStatus.OPEN // Force revert to OPEN
                 };
             }
             return l;

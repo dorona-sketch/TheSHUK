@@ -36,13 +36,13 @@ export const loadFromStorage = <T>(key: string, defaultValue: T): T => {
         return JSON.parse(item, (key, value) => {
             // ISO 8601 Date regex (handles optional milliseconds and optional Z or offset)
             // Matches: 2023-10-05T14:30:00Z, 2023-10-05T14:30:00.000Z, 2023-10-05T14:30:00+00:00
-            const dateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/;
-            
-            if (typeof value === 'string' && dateRegex.test(value)) {
-                const d = new Date(value);
-                // Ensure it's a valid date
-                if (!isNaN(d.getTime())) {
-                    return d;
+            if (typeof value === 'string') {
+                // Strict check for ISO 8601 format to avoid false positives on normal strings
+                if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/.test(value)) {
+                    const d = new Date(value);
+                    if (!isNaN(d.getTime())) {
+                        return d;
+                    }
                 }
             }
             return value;

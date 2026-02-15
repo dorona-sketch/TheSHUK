@@ -1,9 +1,9 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { User, AppMode } from '../types';
 import { useChat } from '../context/ChatContext';
 import { useStore } from '../context/StoreContext';
 import { NotificationDropdown } from './NotificationDropdown';
+import { ShukLogo } from './assets/ShukLogo';
 
 interface NavbarProps {
   currentUser: User | null;
@@ -27,9 +27,9 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
 
   const getModeLabel = () => {
       switch(appMode) {
-          case AppMode.MARKETPLACE: return 'Marketplace Only';
-          case AppMode.BREAKS: return 'Breaks Only';
-          case AppMode.COMBINED: return 'Combined View';
+          case AppMode.MARKETPLACE: return 'Marketplace';
+          case AppMode.BREAKS: return 'Live Breaks';
+          case AppMode.COMBINED: return 'The Shuk';
       }
   };
 
@@ -50,48 +50,56 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
   }, []);
 
   return (
-    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+    <nav className="sticky top-0 z-50 bg-shuk-dark/90 backdrop-blur-md border-b border-shuk-border shadow-lg" role="navigation" aria-label="Main Navigation">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center gap-6">
             <div 
-                className="flex-shrink-0 flex items-center gap-2 cursor-pointer"
+                className="flex-shrink-0 flex items-center gap-3 cursor-pointer group"
                 onClick={handleLogoClick}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && handleLogoClick()}
+                aria-label="Go to Home"
             >
-              <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">
-                P
+              <ShukLogo className="h-8 w-8 text-shuk-primary group-hover:drop-shadow-[0_0_5px_rgba(34,211,238,0.5)] transition-all" />
+              <div className="flex flex-col">
+                <span className="font-display font-bold text-xl text-shuk-silver tracking-tight group-hover:text-white transition-colors">THE DIGITAL SHUK</span>
+                <span className="text-[9px] text-shuk-primary tracking-[0.2em] font-medium leading-none">COLLECTIBLES</span>
               </div>
-              <span className="font-bold text-xl text-gray-900 tracking-tight hidden sm:block">PokeVault</span>
             </div>
 
             {/* App Mode Segmented Control (Desktop) */}
-            <div className="hidden md:flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+            <div className="hidden md:flex bg-shuk-surface p-1 rounded-lg border border-shuk-border">
                 <button
                     onClick={() => setAppMode(AppMode.MARKETPLACE)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    aria-pressed={appMode === AppMode.MARKETPLACE}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all focus:outline-none focus:ring-2 focus:ring-shuk-primary ${
                         appMode === AppMode.MARKETPLACE 
-                        ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' 
-                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'
+                        ? 'bg-shuk-primary text-shuk-dark shadow-sm' 
+                        : 'text-shuk-muted hover:text-shuk-silver hover:bg-shuk-surfaceHigh'
                     }`}
                 >
-                    Marketplace
+                    Market
                 </button>
                 <button
                     onClick={() => setAppMode(AppMode.BREAKS)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    aria-pressed={appMode === AppMode.BREAKS}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all focus:outline-none focus:ring-2 focus:ring-shuk-primary ${
                         appMode === AppMode.BREAKS 
-                        ? 'bg-white text-purple-700 shadow-sm ring-1 ring-black/5' 
-                        : 'text-gray-500 hover:text-purple-700 hover:bg-gray-200/50'
+                        ? 'bg-shuk-primary text-shuk-dark shadow-sm' 
+                        : 'text-shuk-muted hover:text-shuk-silver hover:bg-shuk-surfaceHigh'
                     }`}
                 >
                     Breaks
                 </button>
                 <button
                     onClick={() => setAppMode(AppMode.COMBINED)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    aria-pressed={appMode === AppMode.COMBINED}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all focus:outline-none focus:ring-2 focus:ring-shuk-primary ${
                         appMode === AppMode.COMBINED 
-                        ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' 
-                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'
+                        ? 'bg-shuk-primary text-shuk-dark shadow-sm' 
+                        : 'text-shuk-muted hover:text-shuk-silver hover:bg-shuk-surfaceHigh'
                     }`}
                 >
                     All
@@ -102,7 +110,7 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
           <div className="flex items-center gap-4">
             <button 
                 onClick={() => onNavigate('COMMUNITY')}
-                className="hidden md:flex items-center gap-1.5 text-sm font-bold text-gray-600 hover:text-primary-600 transition-colors"
+                className="hidden md:flex items-center gap-1.5 text-sm font-bold text-shuk-muted hover:text-shuk-primary transition-colors focus:outline-none focus:text-shuk-primary"
             >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                 Community
@@ -110,22 +118,10 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
 
             {currentUser ? (
                 <>
-                    {/* Admin Moderation Link */}
-                    {currentUser.isAdmin && (
-                        <button 
-                            onClick={() => onNavigate('MODERATION')}
-                            className="hidden md:flex items-center text-sm font-bold text-red-700 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-full border border-red-200 transition-colors"
-                        >
-                            <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                            Mod
-                        </button>
-                    )}
-
-                    {/* Seller Dashboard Link (Only for Sellers) */}
                     {currentUser.role === 'SELLER' && (
                         <button 
                             onClick={() => onNavigate('DASHBOARD')}
-                            className="hidden md:flex items-center text-sm font-bold text-primary-700 hover:text-primary-800 bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-full border border-primary-200 transition-colors"
+                            className="hidden md:flex items-center text-sm font-bold text-shuk-silver hover:text-white bg-shuk-surfaceHigh hover:bg-shuk-border px-3 py-1.5 rounded-full border border-shuk-border transition-colors focus:outline-none focus:ring-2 focus:ring-shuk-primary"
                         >
                             <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                             Dashboard
@@ -136,13 +132,14 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
                     <div className="relative" ref={notifRef}>
                         <button
                             onClick={() => setShowNotifications(!showNotifications)}
-                            className="p-2 text-gray-500 hover:text-primary-600 hover:bg-gray-50 rounded-full transition-colors relative"
+                            className="p-2 text-shuk-muted hover:text-shuk-primary hover:bg-shuk-surfaceHigh rounded-full transition-colors relative focus:outline-none focus:ring-2 focus:ring-shuk-primary"
+                            aria-label={`Notifications ${unreadNotifs > 0 ? `(${unreadNotifs} unread)` : ''}`}
                         >
                             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                             </svg>
                             {unreadNotifs > 0 && (
-                                <span className="absolute top-1 right-1 inline-flex items-center justify-center w-2.5 h-2.5 bg-red-600 rounded-full ring-2 ring-white"></span>
+                                <span className="absolute top-1 right-1 inline-flex items-center justify-center w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-shuk-dark"></span>
                             )}
                         </button>
                         {showNotifications && (
@@ -156,32 +153,32 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
                     {/* Chat Icon */}
                     <button 
                         onClick={() => onNavigate('CHAT')}
-                        className="relative p-2 text-gray-500 hover:text-primary-600 hover:bg-gray-50 rounded-full transition-colors"
-                        aria-label="Messages"
+                        className="relative p-2 text-shuk-muted hover:text-shuk-primary hover:bg-shuk-surfaceHigh rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-shuk-primary"
+                        aria-label={`Messages ${totalUnreadCount > 0 ? `(${totalUnreadCount} unread)` : ''}`}
                     >
                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                         </svg>
                         {totalUnreadCount > 0 && (
-                            <span className="absolute top-1 right-0 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white transform translate-x-1/4 -translate-y-1/4 bg-red-600 rounded-full min-w-[18px]">
+                            <span className="absolute top-1 right-0 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-shuk-dark transform translate-x-1/4 -translate-y-1/4 bg-shuk-primary rounded-full min-w-[18px]">
                                 {totalUnreadCount}
                             </span>
                         )}
                     </button>
 
                     <div 
-                        className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded-full transition-colors"
+                        className="flex items-center gap-2 cursor-pointer hover:bg-shuk-surfaceHigh p-1.5 rounded-full transition-colors focus-within:ring-2 focus-within:ring-shuk-primary"
                         onClick={() => onNavigate('PROFILE')}
+                        role="button"
+                        tabIndex={0}
+                        aria-label="User Profile"
                     >
-                         <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold border border-primary-200 overflow-hidden">
+                         <div className="h-8 w-8 rounded-full bg-shuk-surface border border-shuk-border flex items-center justify-center text-shuk-silver font-bold overflow-hidden">
                             {currentUser.avatar ? (
                                 <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
                             ) : (
                                 currentUser.name.charAt(0)
                             )}
-                         </div>
-                         <div className="hidden md:block text-sm font-medium text-gray-700">
-                             {currentUser.name}
                          </div>
                     </div>
                 </>
@@ -189,15 +186,15 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
                 <div className="flex items-center gap-3">
                     <button 
                         onClick={() => onNavigate('LOGIN')}
-                        className="text-gray-500 hover:text-gray-900 font-medium text-sm"
+                        className="text-shuk-muted hover:text-shuk-silver font-medium text-sm"
                     >
                         Sign In
                     </button>
                     <button 
                         onClick={() => onNavigate('REGISTER')}
-                        className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
+                        className="bg-shuk-primary text-shuk-dark px-4 py-2 rounded-md font-bold text-sm transition-colors shadow-[0_0_10px_rgba(34,211,238,0.2)] hover:shadow-[0_0_15px_rgba(34,211,238,0.4)]"
                     >
-                        Register
+                        Join
                     </button>
                 </div>
             )}
@@ -205,20 +202,21 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
         </div>
         
         {/* Mobile Mode Switcher */}
-        <div className="md:hidden py-2 border-t border-gray-100 flex justify-between px-4 items-center">
-            <button onClick={handleModeToggle} className="text-xs text-gray-500 font-medium flex items-center gap-1">
-                View: <span className="text-primary-600">{getModeLabel()}</span>
+        <div className="md:hidden py-2 border-t border-shuk-border flex justify-between px-4 items-center bg-shuk-dark">
+            <button onClick={handleModeToggle} className="text-xs text-shuk-muted font-medium flex items-center gap-1 focus:outline-none">
+                View: <span className="text-shuk-primary font-bold">{getModeLabel()}</span>
+                <svg className="w-3 h-3 text-shuk-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             </button>
             <div className="flex items-center gap-4">
                 <button 
                     onClick={onSell}
-                    className="text-xs font-bold text-gray-900 flex items-center gap-1"
+                    className="text-xs font-bold text-shuk-silver flex items-center gap-1 focus:outline-none active:text-shuk-primary"
                 >
                     Sell
                 </button>
                 <button 
                     onClick={() => onNavigate('COMMUNITY')}
-                    className="text-xs font-bold text-gray-600 flex items-center gap-1"
+                    className="text-xs font-bold text-shuk-muted flex items-center gap-1 focus:outline-none active:text-shuk-silver"
                 >
                     Community
                 </button>

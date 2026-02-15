@@ -24,36 +24,42 @@ const VARIANT_MAP: Record<string, string> = {
     'Unlimited': 'unlimited'
 };
 
+const safeFetch = async (url: string) => {
+    try {
+        const response = await fetch(url, { headers: HEADERS });
+        if (!response.ok) {
+            console.warn(`TCG API Request failed: ${response.status} ${response.statusText}`);
+            return null;
+        }
+        return await response.json();
+    } catch (error) {
+        // Suppress "Failed to fetch" noise, just warn
+        console.warn("TCG API Network unavailable (using offline mode)");
+        return null;
+    }
+};
+
 export const fetchTcgSets = async () => {
   const cacheKey = 'sets';
   if (CACHE[cacheKey] && Date.now() - CACHE[cacheKey].timestamp < CACHE_TTL) return CACHE[cacheKey].data;
 
-  try {
-    const response = await fetch(`${API_BASE_URL}/sets?orderBy=-releaseDate`, { headers: HEADERS });
-    if (!response.ok) throw new Error(`API Error: ${response.status}`);
-    const data = await response.json();
-    const sets = data.data || [];
-    CACHE[cacheKey] = { data: sets, timestamp: Date.now() };
-    return sets;
-  } catch (error) {
-    console.warn("TCG API Failed (Sets)", error);
-    return [];
-  }
+  const data = await safeFetch(`${API_BASE_URL}/sets?orderBy=-releaseDate`);
+  if (!data) return [];
+  
+  const sets = data.data || [];
+  CACHE[cacheKey] = { data: sets, timestamp: Date.now() };
+  return sets;
 };
 
 export const fetchCardById = async (id: string) => {
     const cacheKey = `card_${id}`;
     if (CACHE[cacheKey]) return CACHE[cacheKey].data;
 
-    try {
-        const response = await fetch(`${API_BASE_URL}/cards/${id}`, { headers: HEADERS });
-        if (!response.ok) return null;
-        const json = await response.json();
-        CACHE[cacheKey] = { data: json.data, timestamp: Date.now() };
-        return json.data;
-    } catch (e) {
-        return null;
-    }
+    const data = await safeFetch(`${API_BASE_URL}/cards/${id}`);
+    if (!data) return null;
+    
+    CACHE[cacheKey] = { data: data.data, timestamp: Date.now() };
+    return data.data;
 };
 
 /**
@@ -64,36 +70,24 @@ export const fetchSetChaseCard = async (setId: string) => {
     const cacheKey = `chase_${setId}`;
     if (CACHE[cacheKey] && Date.now() - CACHE[cacheKey].timestamp < CACHE_TTL) return CACHE[cacheKey].data;
 
-    try {
-        // Query to get the highest market price across common high-value types
-        // API Sort priority: Holofoil > 1st Ed > Normal
-        const response = await fetch(
-            `${API_BASE_URL}/cards?q=set.id:${setId}&orderBy=-tcgplayer.prices.holofoil.market,-tcgplayer.prices.1stEditionHolofoil.market,-tcgplayer.prices.normal.market&pageSize=1`, 
-            { headers: HEADERS }
-        );
-        
-        if (!response.ok) return null;
-        const json = await response.json();
-        const card = json.data?.[0] || null;
-        
-        if (card) {
-            CACHE[cacheKey] = { data: card, timestamp: Date.now() };
-        }
-        return card;
-    } catch (e) {
-        console.warn("Chase fetch failed", e);
-        return null;
+    // Query to get the highest market price across common high-value types
+    // API Sort priority: Holofoil > 1st Ed > Normal
+    const data = await safeFetch(
+        `${API_BASE_URL}/cards?q=set.id:${setId}&orderBy=-tcgplayer.prices.holofoil.market,-tcgplayer.prices.1stEditionHolofoil.market,-tcgplayer.prices.normal.market&pageSize=1`
+    );
+    
+    const card = data?.data?.[0] || null;
+    if (card) {
+        CACHE[cacheKey] = { data: card, timestamp: Date.now() };
     }
+    return card;
 };
 
 export const fetchSetHighValueCards = async (setId: string, limit: number = 5) => {
-    try {
-        const response = await fetch(
-            `${API_BASE_URL}/cards?q=set.id:${setId}&orderBy=-tcgplayer.prices.holofoil.market,-tcgplayer.prices.normal.market&pageSize=${limit}`, 
-            { headers: HEADERS }
-        );
-        return (await response.json()).data || [];
-    } catch { return []; }
+    const data = await safeFetch(
+        `${API_BASE_URL}/cards?q=set.id:${setId}&orderBy=-tcgplayer.prices.holofoil.market,-tcgplayer.prices.normal.market&pageSize=${limit}`
+    );
+    return data?.data || [];
 };
 
 export const getCardPrice = async (cardId: string, variant?: string): Promise<{ market: number, low: number, high: number, currency: string } | null> => {
@@ -217,10 +211,8 @@ export const searchCardByCollectorNumber = async (number: string, total?: string
 
         // Helper to run query
         const runQuery = async (query: string) => {
-            //console.log(`[TCGAPI] Searching: ${query}`);
-            const response = await fetch(`${API_BASE_URL}/cards?q=${encodeURIComponent(query)}`, { headers: HEADERS });
-            if (!response.ok) return [];
-            return (await response.json()).data || [];
+            const data = await safeFetch(`${API_BASE_URL}/cards?q=${encodeURIComponent(query)}`);
+            return data?.data || [];
         };
 
         // Run queries in sequence until results found
@@ -264,7 +256,7 @@ export const searchCardByCollectorNumber = async (number: string, total?: string
         
         return candidates;
     } catch (e) {
-        console.error("Search error", e);
+        console.warn("Search logic error (silent)", e);
         return [];
     }
 };
