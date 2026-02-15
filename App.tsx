@@ -65,7 +65,9 @@ const AppContent = () => {
   const handleNavigate = (view: any, id?: string) => {
     setCurrentView(view);
     setSelectedId(id);
-    window.scrollTo(0, 0);
+    // Scroll the main content container to top
+    const scrollContainer = document.getElementById('main-scroll');
+    if (scrollContainer) scrollContainer.scrollTo(0, 0);
   };
 
   const handleInteraction = (listing: Listing, action: 'BUY' | 'BID' | 'CHAT' | 'MANAGE') => {
@@ -152,7 +154,7 @@ const AppContent = () => {
                             listing={listing} 
                             onInteract={handleInteraction}
                             enableHoverPreview={false} 
-                            actionLabel={currentUser?.role === 'SELLER' && listing.sellerId === currentUser.id ? 'Manage' : (listing.type === ListingType.AUCTION ? 'Bid' : 'Buy')}
+                            actionLabel={currentUser?.id === listing.sellerId ? 'Manage' : (listing.type === ListingType.AUCTION ? 'Bid' : 'Buy')}
                             currentUserId={currentUser?.id}
                         />
                     </div>
@@ -229,12 +231,6 @@ const AppContent = () => {
             </div>
             <div className={`w-full md:w-2/3 ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
                 {selectedId ? (
-                    // Needs conversation object. We can fetch from store/context.
-                    // For now, assume ChatContext handles data fetching based on ID inside ChatThread or similar wrapper
-                    // But ChatThread takes `conversation` prop.
-                    // We'll rely on the ChatContext activeConversation which is set when we select.
-                    // Wait, `Inbox` onSelect calls `setSelectedId` but should also call `selectConversation`.
-                    // Let's assume we render a wrapper that handles this.
                     <ChatWrapper conversationId={selectedId} currentUser={currentUser!} onBack={() => setSelectedId(undefined)} />
                 ) : (
                     <div className="hidden md:flex items-center justify-center w-full h-full text-gray-400 bg-gray-50">Select a conversation</div>
@@ -262,10 +258,9 @@ const AppContent = () => {
     case 'LIVE':
         const liveListing = filteredListings.find(l => l.id === selectedId);
         if (liveListing) {
-            // Live Session usually takes full screen, maybe hide navbar? 
-            // For now, render inside layout.
+            // Live Session renders full screen inside the content area
             return (
-                <div className="min-h-screen bg-black">
+                <div className="h-full min-h-[80vh] bg-black rounded-xl overflow-hidden shadow-2xl border border-gray-800">
                     <LiveSession listing={liveListing} currentUser={currentUser} onBack={() => handleNavigate('DETAILS', liveListing.id)} />
                 </div>
             );
@@ -278,13 +273,24 @@ const AppContent = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-20">
-      <Navbar currentUser={currentUser} onNavigate={handleNavigate} onSell={() => setIsSellModalOpen(true)} />
+    // Outer dark container to frame the "card"
+    <div className="fixed inset-0 bg-[#111827] p-2 sm:p-4 font-sans flex flex-col">
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {content}
+      {/* The Alt Art Frame - Constraints the app visuals */}
+      <div className="alt-art-frame flex-1 flex flex-col relative bg-gray-50 overflow-hidden w-full h-full max-w-[2000px] mx-auto shadow-2xl">
+        
+        {/* Scrollable Content Area within the frame */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar scroll-smooth" id="main-scroll">
+            <Navbar currentUser={currentUser} onNavigate={handleNavigate} onSell={() => setIsSellModalOpen(true)} />
+            
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-20">
+              {content}
+            </div>
+        </div>
+
       </div>
 
+      {/* Modals placed OUTSIDE the frame to ensure they overlay correctly and ignore the frame's transform */}
       <AddListingModal 
         isOpen={isSellModalOpen} 
         onClose={() => { setIsSellModalOpen(false); setListingToEdit(null); }} 

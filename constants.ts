@@ -1,6 +1,16 @@
 
 import { Listing, ListingType, Condition, User, Language, ProductCategory, GradingCompany, SealedProductType, PokemonType, CardCategory, VariantTag, BreakStatus, PaymentIntent, WalletTransaction, PaymentStatus, TransactionType, Group, Thread, Comment, Report } from './types';
 
+export const POPULAR_POKEMON = [
+    'Charizard', 'Pikachu', 'Gengar', 'Umbreon', 'Lugia', 'Rayquaza', 'Mewtwo', 'Eevee',
+    'Gyarados', 'Mew', 'Dragonite', 'Tyranitar', 'Blastoise', 'Venusaur', 'Garchomp',
+    'Lucario', 'Mimikyu', 'Greninja', 'Sylveon', 'Espeon', 'Snorlax', 'Arcanine',
+    'Bulbasaur', 'Squirtle', 'Charmander', 'Zapdos', 'Moltres', 'Articuno', 'Raichu',
+    'Scizor', 'Gardevoir', 'Alakazam', 'Machamp', 'Jigglypuff', 'Psyduck', 'Meowth',
+    'Vaporeon', 'Jolteon', 'Flareon', 'Leafeon', 'Glaceon', 'Giratina', 'Arceus',
+    'Moonbreon', 'Lillie', 'Iono', 'Miriam', 'Marnie', 'Rosa'
+];
+
 export const MOCK_USER_BUYER: User = {
   id: 'u_buyer_01',
   name: 'Ash Ketchum',
@@ -133,9 +143,6 @@ export const TAG_DISPLAY_LABELS: Record<VariantTag, string> = {
     [VariantTag.FIRST_EDITION]: '1st Ed.',
     [VariantTag.SECRET_RARE]: 'Secret Rare'
 };
-
-// ... (Rest of existing constants - Truncated for brevity but assume all prior consts exist below)
-// ... INITIAL_GROUPS, INITIAL_THREADS, INITIAL_COMMENTS, etc.
 
 export const INITIAL_GROUPS: Group[] = [
     {

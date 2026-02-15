@@ -1,7 +1,7 @@
 
 import { IdentificationResult, CardCandidate, PokemonType, CardCategory, VariantTag, CardTypeTag, CategoryTag } from '../types';
 import { cropImageCorners, binarizeBase64, extractIDStrips, computeDHash, calculateHammingDistance, autoCropCard } from '../utils/imageProcessing';
-import { performOcrOnCorners } from './geminiService';
+import { performOcrOnCorners, identifyCardVisual } from './geminiService';
 import { searchCardByCollectorNumber, getCardPrice, fetchSetChaseCard } from './tcgApiService';
 
 export const CardRecognitionService = {
@@ -13,6 +13,7 @@ export const CardRecognitionService = {
      * 3. API Lookup: Fetch candidates by ID logic.
      * 4. Map & Expand Variants: Explode API results into specific variants (Normal, Reverse Holo) with Pricing.
      * 5. Tie-Break: ROI Strip dHash comparison (BL/BR) if variants ambiguous visually.
+     * 6. Visual AI Fallback: If OCR fails, ask Gemini to identify card by image.
      */
     async identify(base64Image: string, mimeType: string = 'image/jpeg'): Promise<IdentificationResult> {
         console.group("CardRecognition Pipeline");
@@ -116,6 +117,42 @@ export const CardRecognitionService = {
             finalCandidates.push(...variants);
         });
 
+        // --- NEW: Visual AI Fallback ---
+        if (finalCandidates.length === 0) {
+            console.log("Stage 3.5: Fallback to Visual AI...");
+            const aiData = await identifyCardVisual(base64Image);
+            
+            if (aiData && aiData.cardName) {
+                // Try to find it in API via name + number (if available) to get pricing metadata
+                let verifyCandidates: any[] = [];
+                if (aiData.number) {
+                    verifyCandidates = await searchCardByCollectorNumber(aiData.number);
+                    // Filter by name roughly
+                    verifyCandidates = verifyCandidates.filter(c => c.name.toLowerCase().includes(aiData.cardName.toLowerCase()));
+                }
+                
+                if (verifyCandidates.length > 0) {
+                    verifyCandidates.forEach(apiCard => {
+                        finalCandidates.push(...expandVariants(apiCard));
+                    });
+                } else {
+                    // Manual Candidate from AI Data
+                    finalCandidates.push({
+                        cardName: aiData.cardName,
+                        pokemonName: aiData.cardName,
+                        setName: aiData.setName,
+                        number: aiData.number,
+                        rarity: aiData.rarity,
+                        confidence: 0.7,
+                        matchSource: 'visual_ai',
+                        language: 'English',
+                        releaseYear: '',
+                        condition: 'Near Mint'
+                    });
+                }
+            }
+        }
+
         // 5. Chase Analysis (Parallelized for Speed)
         await Promise.all(finalCandidates.map(async (candidate) => {
             const chaseInfo = await this.analyzeChaseStatus(candidate);
@@ -127,6 +164,17 @@ export const CardRecognitionService = {
         if (finalCandidates.length > 1) {
             console.log("Stage 4: Ambiguous matches detected. Running Visual Tie-Break...");
             finalCandidates = await this.performVisualTieBreak(`data:${mimeType};base64,${base64Image}`, finalCandidates);
+            
+            // UPDATE: Refine confidence based on visual similarity score
+            if (finalCandidates[0].visualSimilarity !== undefined) {
+                finalCandidates.forEach(c => {
+                    const visualScore = c.visualSimilarity || 0;
+                    c.confidence = (0.9 + visualScore) / 2;
+                });
+                
+                // Re-sort by final confidence to ensure best match is first
+                finalCandidates.sort((a, b) => b.confidence - a.confidence);
+            }
         } else {
             console.log("Stage 4: Skipped (Single or No candidate)");
         }
@@ -168,14 +216,12 @@ export const CardRecognitionService = {
             
             // 2. Compare against candidates
             const scoredCandidates = await Promise.all(candidates.map(async (c) => {
-                // If candidate has no image, push to bottom
+                // If candidate has no image, apply penalty but don't fail
                 if (!c.imageUrl) return { ...c, distance: 1000, visualSimilarity: 0 };
 
                 try {
-                    // Optimized: Only fetch/hash if not identical to another candidate we already checked? 
-                    // For now, simpler to process all.
-                    
                     const cStrips = await extractIDStrips(c.imageUrl); 
+                    // If we can't get strips from API image, treat as low match
                     if (!cStrips.bl || !cStrips.br) return { ...c, distance: 1000, visualSimilarity: 0 };
 
                     const cHashBL = computeDHash(cStrips.bl);
@@ -204,9 +250,6 @@ export const CardRecognitionService = {
             // 3. Sort by Similarity (Descending)
             scoredCandidates.sort((a, b) => (b.visualSimilarity || 0) - (a.visualSimilarity || 0));
 
-            // Logic Check: If multiple candidates share the exact same Image URL (e.g. variants from same API ID),
-            // they will have identical scores. We keep them adjacent.
-            
             console.table(scoredCandidates.map(c => ({
                 name: c.cardName,
                 variant: c.variant,
@@ -226,7 +269,7 @@ export const CardRecognitionService = {
 
     /**
      * Determines if a card is the 'Chase' card of its set.
-     * Logic: Matches set chase card ID AND ensures value is significant.
+     * Logic: Matches set chase card ID.
      */
     async analyzeChaseStatus(card: CardCandidate): Promise<{ isChase: boolean, price: number }> {
         if (!card.id || !card.setId) return { isChase: false, price: 0 };
@@ -245,13 +288,12 @@ export const CardRecognitionService = {
             
             // Criteria: 
             // 1. ID Match: Is this card ID the same as the most expensive card in the set?
-            // 2. Value Threshold: Is it actually valuable? (> $20)
+            // Note: We avoid arbitrary dollar thresholds to be purely deterministic based on set ranking.
             
             const isIdMatch = setChase && setChase.id === card.id;
-            const isHighValue = price > 20;
 
             return { 
-                isChase: !!(isIdMatch && isHighValue), 
+                isChase: !!isIdMatch, 
                 price 
             };
 
@@ -283,15 +325,25 @@ const deriveTags = (apiCard: any): { cardTypeTag?: CardTypeTag, categoryTag?: Ca
     else if (subtypes.includes('Stage 2')) cardTypeTag = CardTypeTag.STAGE2;
     else if (subtypes.includes('Stage 1')) cardTypeTag = CardTypeTag.STAGE1;
     else if (subtypes.includes('Basic')) cardTypeTag = CardTypeTag.BASIC;
+    else if (subtypes.includes('LEGEND')) cardTypeTag = CardTypeTag.LEGEND;
+    else if (subtypes.includes('BREAK')) cardTypeTag = CardTypeTag.BREAK;
+    else if (subtypes.includes('Prism Star')) cardTypeTag = CardTypeTag.PRISM;
 
-    // Category / Rarity Tag
+    // Category / Rarity Tag - Expanded mapping for modern sets
     if (rarity.includes('special illustration rare') || rarity === 'sir') categoryTag = CategoryTag.SIR;
     else if (rarity.includes('illustration rare') || rarity === 'ir') categoryTag = CategoryTag.IR;
     else if (rarity.includes('hyper rare') || rarity === 'hr') categoryTag = CategoryTag.HR;
     else if (rarity.includes('ultra rare') || rarity === 'ur') categoryTag = CategoryTag.UR;
     else if (rarity.includes('secret rare') || rarity === 'sr') categoryTag = CategoryTag.SR;
     else if (rarity.includes('double rare') || rarity === 'rr') categoryTag = CategoryTag.RR;
-    else if (rarity.includes('character rare')) categoryTag = CategoryTag.CHR;
+    else if (rarity.includes('triple rare') || rarity === 'rrr') categoryTag = CategoryTag.RRR;
+    else if (rarity.includes('character rare') || rarity === 'chr') categoryTag = CategoryTag.CHR;
+    else if (rarity.includes('character super rare') || rarity === 'csr') categoryTag = CategoryTag.CSR;
+    else if (rarity.includes('ace spec') || rarity === 'ace') categoryTag = CategoryTag.ACE;
+    else if (rarity.includes('shiny rare') || rarity === 'shiny') categoryTag = CategoryTag.SHINY;
+    else if (rarity.includes('shiny ultra rare')) categoryTag = CategoryTag.SHINY_ULTRA;
+    else if (rarity.includes('radiant')) categoryTag = CategoryTag.RADIANT;
+    
     else if (rarity.includes('trainer gallery')) variantTags.push(VariantTag.TRAINER_GALLERY);
 
     // Variants
@@ -346,6 +398,7 @@ const expandVariants = (apiCard: any): CardCandidate[] => {
     
     if (prices.holofoil) {
         // Special rarities often use 'holofoil' bucket but deserve better names
+        // If the card is already special (e.g. SIR), we prefer that label over just 'Holofoil'
         const variantName = base.categoryTag ? base.categoryTag : (base.rarity || 'Holofoil');
         variants.push({ ...base, variant: variantName, priceEstimate: prices.holofoil.market });
     }

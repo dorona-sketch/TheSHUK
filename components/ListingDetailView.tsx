@@ -9,13 +9,13 @@ import { Countdown } from './Countdown';
 import { formatLocalTime, formatSmartDate } from '../utils/dateUtils';
 import { TAG_DISPLAY_LABELS } from '../constants';
 
-interface ListingDetailViewProps {
-  listing: Listing;
-  currentUser: User | null;
-  onBack: () => void;
-  onInteract: (listing: Listing, action: 'BUY' | 'BID' | 'CHAT' | 'MANAGE') => void;
-  onViewListing: (listing: Listing) => void;
-  onWatchLive?: (listing: Listing) => void;
+export interface ListingDetailViewProps {
+    listing: Listing;
+    currentUser: User | null;
+    onBack: () => void;
+    onInteract: (listing: Listing, action: 'BUY' | 'BID' | 'CHAT' | 'MANAGE') => void;
+    onViewListing: (listing: Listing) => void;
+    onWatchLive?: (listing: Listing) => void;
 }
 
 const ImageGallery: React.FC<{ listing: Listing }> = ({ listing }) => {
@@ -540,7 +540,7 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
     const isBreak = listing.type === ListingType.TIMED_BREAK;
     const isEnded = listing.isSold || (isBreak && (listing.breakStatus === BreakStatus.COMPLETED || listing.breakStatus === BreakStatus.CANCELLED));
 
-    let targetDate: Date | undefined;
+    let targetDate: Date | string | undefined | null;
     let timerLabel = '';
     
     if (isAuction) {
@@ -634,13 +634,18 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                 }
 
                 return (
-                    <button 
-                        onClick={() => handleInteractWrapper('BUY')} 
-                        disabled={isJoining}
-                        className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-bold rounded-xl shadow-lg transition-all transform hover:-translate-y-1 disabled:transform-none disabled:cursor-not-allowed border border-purple-800"
-                    >
-                        {isJoining ? 'Securing Spot...' : `Join Break • $${listing.price}`}
-                    </button>
+                    <>
+                        <button 
+                            onClick={() => handleInteractWrapper('BUY')} 
+                            disabled={isJoining}
+                            className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-bold rounded-xl shadow-lg transition-all transform hover:-translate-y-1 disabled:transform-none disabled:cursor-not-allowed border border-purple-800"
+                        >
+                            {isJoining ? 'Securing Spot...' : `Join Break • $${listing.price}`}
+                        </button>
+                        <p className="text-xs text-center text-gray-500">
+                            Funds authorized now. Charged only when full.
+                        </p>
+                    </>
                 );
             }
             return <div className="w-full py-4 bg-gray-100 text-gray-500 font-bold rounded-xl text-center">Break Ended</div>;
@@ -793,6 +798,10 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                                 </span>
                                 {isBreak && <span className="text-sm text-gray-500 font-medium">per spot</span>}
                             </div>
+                            
+                            {isAuction && listing.reservePrice && listing.currentBid < listing.reservePrice && (
+                                <span className="text-xs text-red-500 font-medium block mt-1">Reserve not met</span>
+                            )}
                             
                             {targetDate && !isEnded && (
                                 <div className="mt-2 flex items-center gap-2 text-red-600 bg-red-50 w-fit px-3 py-1 rounded-lg">

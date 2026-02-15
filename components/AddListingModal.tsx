@@ -16,7 +16,7 @@ interface AddListingModalProps {
   initialData?: Listing | null;
 }
 
-const PRODUCT_TYPES = ['ETB', 'Booster Box', 'Booster Bundle', 'Single Packs', 'Collection Box', 'UPC', 'Tin', 'Other'] as const;
+const PRODUCT_TYPES = Object.values(SealedProductType);
 
 type Step = 'UPLOAD' | 'PROCESSING' | 'REVIEW' | 'EDIT_DETAILS';
 
@@ -46,7 +46,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
   // --- NEW BREAK STATE ---
   const [openedProduct, setOpenedProduct] = useState<OpenedProduct>({
-      type: 'ETB',
+      type: SealedProductType.ETB,
       setId: '',
       setName: '',
       productName: '',
@@ -83,6 +83,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
     title: '',
     description: '',
     price: '',
+    reservePrice: '', // NEW: Reserve Price State
     type: ListingType.DIRECT_SALE,
     category: ProductCategory.RAW_CARD,
     pokemonName: '',
@@ -125,6 +126,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
               setFormData({
                   ...initialData as any,
                   price: initialData.price.toString(),
+                  reservePrice: initialData.reservePrice?.toString() || '',
                   targetParticipants: initialData.targetParticipants?.toString() || '10',
                   grade: initialData.grade?.toString() || '10',
                   openDurationHours: initialData.openDurationHours || 24,
@@ -158,6 +160,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                   ...prev, 
                   type: ListingType.DIRECT_SALE, 
                   price: '', 
+                  reservePrice: '',
                   title: '', 
                   description: '',
                   targetParticipants: '10',
@@ -175,12 +178,42 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
               }));
               setPrizes([]);
               setContentImages([]);
-              setOpenedProduct({ type: 'ETB', setId: '', setName: '', productName: '', quantity: 1, language: 'English', estimatedValue: 45 });
+              setOpenedProduct({ type: SealedProductType.ETB, setId: '', setName: '', productName: '', quantity: 1, language: 'English', estimatedValue: 45 });
               setIsProductNameManuallyEdited(false);
               setErrors({});
           }
       }
   }, [isOpen, initialData]);
+
+  // Recommendation Logic for Reserve Price
+  const recommendedReserve = useMemo(() => {
+      if (formData.type !== ListingType.AUCTION) return null;
+      
+      // 1. Determine Base Value
+      // Use API estimate if available (more accurate), else use current user input price
+      const baseValue = selectedCandidate?.priceEstimate || parseFloat(formData.price) || 0;
+      
+      if (baseValue <= 0) return null;
+
+      // 2. Condition Multiplier
+      // Damaged/Played cards generally have lower reserve thresholds relative to market
+      let conditionMult = 1.0;
+      switch (formData.condition) {
+          case Condition.DAMAGED: conditionMult = 0.5; break;
+          case Condition.PLAYED: conditionMult = 0.7; break;
+          case Condition.EXCELLENT: conditionMult = 0.9; break;
+          case Condition.NEAR_MINT: case Condition.MINT: default: conditionMult = 1.0; break;
+      }
+
+      // 3. Calculation: 70% of Risk-Adjusted Value
+      return (baseValue * 0.7 * conditionMult).toFixed(2);
+  }, [formData.type, formData.price, formData.condition, selectedCandidate]);
+
+  const applyRecommendation = () => {
+      if (recommendedReserve) {
+          setFormData(prev => ({ ...prev, reservePrice: recommendedReserve }));
+      }
+  };
 
   // Auto-Update Product Name from Set/Type
   useEffect(() => {
@@ -467,6 +500,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       const payload: any = {
           ...formData,
           price,
+          reservePrice: formData.reservePrice ? parseFloat(formData.reservePrice) : undefined,
           targetParticipants: spots,
           openDurationHours: parseInt(formData.openDurationHours as any),
           maxEntriesPerUser: Math.max(1, parseInt(formData.maxEntriesPerUser as any)),
@@ -592,10 +626,18 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {/* Image Column */}
                                 <div className="space-y-4">
-                                    <div className="aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden relative border border-gray-200 group">
+                                    <div 
+                                        className="aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden relative border border-gray-200 group cursor-pointer"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
                                         <img src={croppedImage || ''} className="w-full h-full object-contain" />
-                                        {/* Crop Actions */}
-                                        <div className="absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        
+                                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <span className="bg-white/90 text-gray-900 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">Change Image</span>
+                                        </div>
+
+                                        {/* Crop Actions (Only if we have original) */}
+                                        <div className="absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                                             {tempOriginalImage && (
                                                 <button 
                                                     type="button"
@@ -607,8 +649,9 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                             )}
                                         </div>
                                     </div>
+                                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
                                     <div className="text-xs text-gray-400 text-center">
-                                        This cropped image will be shown publicly.
+                                        Click image to replace.
                                     </div>
                                 </div>
 
@@ -639,13 +682,65 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Price <span className="text-red-500">*</span></label>
+                                            <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">
+                                                {formData.type === ListingType.AUCTION ? 'Start Price' : 'Price'} <span className="text-red-500">*</span>
+                                            </label>
                                             <div className="relative">
                                                 <span className="absolute left-3 top-2.5 text-gray-500 text-sm">$</span>
                                                 <input className={`w-full border p-2.5 pl-6 rounded-lg text-sm font-bold ${errors.price ? 'border-red-500 bg-red-50' : 'border-gray-300'}`} type="number" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} min="0.01" step="0.01" />
                                             </div>
                                             {errors.price && <span className="text-[10px] text-red-500 font-bold">{errors.price}</span>}
                                         </div>
+                                        
+                                        {formData.type === ListingType.AUCTION ? (
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Reserve Price (Optional)</label>
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-2.5 text-gray-500 text-sm">$</span>
+                                                    <input 
+                                                        className="w-full border-gray-300 border p-2.5 pl-6 rounded-lg text-sm font-bold focus:ring-primary-500" 
+                                                        type="number" 
+                                                        value={formData.reservePrice} 
+                                                        onChange={e => setFormData({...formData, reservePrice: e.target.value})} 
+                                                        min="0.01" 
+                                                        step="0.01" 
+                                                        placeholder="No Reserve"
+                                                    />
+                                                </div>
+                                                {recommendedReserve && (
+                                                    <div className="mt-1 flex items-center justify-between">
+                                                        <span className="text-[10px] text-gray-500">Rec: ${recommendedReserve} (70% Val)</span>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={applyRecommendation}
+                                                            className="text-[10px] text-blue-600 font-bold hover:underline"
+                                                        >
+                                                            Apply
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Condition <span className="text-red-500">*</span></label>
+                                                <select 
+                                                    className={`w-full border p-2.5 rounded-lg text-sm ${errors.condition ? 'border-red-500 bg-red-50 focus:ring-red-500' : 'border-gray-300 focus:ring-primary-500'}`}
+                                                    value={formData.condition || ''}
+                                                    onChange={e => {
+                                                        setFormData({...formData, condition: e.target.value as Condition});
+                                                        setErrors({...errors, condition: ''});
+                                                    }}
+                                                >
+                                                    <option value="" disabled>Select Condition</option>
+                                                    {Object.values(Condition).map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                                {errors.condition && <span className="text-[10px] text-red-500 font-bold block mt-1">Required for listing</span>}
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Auction Condition moved if Auction type selected */}
+                                    {formData.type === ListingType.AUCTION && (
                                         <div>
                                             <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Condition <span className="text-red-500">*</span></label>
                                             <select 
@@ -661,7 +756,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                             </select>
                                             {errors.condition && <span className="text-[10px] text-red-500 font-bold block mt-1">Required for listing</span>}
                                         </div>
-                                    </div>
+                                    )}
 
                                     <div>
                                         <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Description</label>

@@ -42,9 +42,10 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   
   // New Filters
   const [localPokemonName, setLocalPokemonName] = useState<string>(filters.pokemonName || '');
+  const [localBoosterName, setLocalBoosterName] = useState<string>(filters.boosterName || '');
   const [localLanguage, setLocalLanguage] = useState<string>(filters.language || '');
-  const [localSeries, setLocalSeries] = useState<string>(filters.series || '');
-  const [localSet, setLocalSet] = useState<string>(filters.set || '');
+  const [localSeries, setLocalSeries] = useState<Set<string>>(new Set(filters.series || []));
+  const [localSet, setLocalSet] = useState<Set<string>>(new Set(filters.set || []));
 
   const [localPokemonTypes, setLocalPokemonTypes] = useState<Set<PokemonType>>(new Set(filters.pokemonTypes));
   const [localCardCategories, setLocalCardCategories] = useState<Set<CardCategory>>(new Set(filters.cardCategories));
@@ -53,6 +54,9 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   const [localCondition, setLocalCondition] = useState<Set<Condition>>(new Set(filters.condition));
   const [localGradingCompany, setLocalGradingCompany] = useState<Set<GradingCompany>>(new Set(filters.gradingCompany));
   const [localSealedProductType, setLocalSealedProductType] = useState<Set<SealedProductType>>(new Set(filters.sealedProductType));
+
+  // Add Product Category State if we want to filter by Raw/Graded/Sealed
+  const [localCategory, setLocalCategory] = useState<ProductCategory | undefined>(filters.category);
 
   const [localBreakStatus, setLocalBreakStatus] = useState<Set<BreakStatus>>(new Set(filters.breakStatus));
   const [localPriceMin, setLocalPriceMin] = useState<string>(filters.priceRange.min?.toString() || '');
@@ -83,9 +87,10 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalSort(sortOption);
       
       setLocalPokemonName(filters.pokemonName || '');
+      setLocalBoosterName(filters.boosterName || '');
       setLocalLanguage(filters.language || '');
-      setLocalSeries(filters.series || '');
-      setLocalSet(filters.set || '');
+      setLocalSeries(new Set(filters.series || []));
+      setLocalSet(new Set(filters.set || []));
 
       setLocalPokemonTypes(new Set(filters.pokemonTypes || []));
       setLocalCardCategories(new Set(filters.cardCategories || []));
@@ -94,6 +99,8 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalGradingCompany(new Set(filters.gradingCompany || []));
       setLocalSealedProductType(new Set(filters.sealedProductType || []));
       
+      setLocalCategory(filters.category);
+
       setLocalBreakStatus(new Set(filters.breakStatus || []));
       setLocalPriceMin(filters.priceRange.min?.toString() || '');
       setLocalPriceMax(filters.priceRange.max?.toString() || '');
@@ -191,21 +198,12 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
 
   const visibleSets = useMemo(() => {
       let sets = availableSets;
-      if (localSeries) {
-          sets = sets.filter(s => s.series === localSeries);
+      // If any series are selected, filter sets by those series
+      if (localSeries.size > 0) {
+          sets = sets.filter(s => localSeries.has(s.series));
       }
       return sets.sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
   }, [availableSets, localSeries]);
-
-  // Group sets by series for better display in dropdown when no series selected
-  const setsBySeries = useMemo(() => {
-      const grouped: Record<string, typeof availableSets> = {};
-      visibleSets.forEach(set => {
-          if (!grouped[set.series]) grouped[set.series] = [];
-          grouped[set.series].push(set);
-      });
-      return grouped;
-  }, [visibleSets]);
 
   // --- Debounced Suggestions (Main Search) ---
   useEffect(() => {
@@ -275,7 +273,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       const activeIndex = isPokemonSearch ? activePokeSuggestionIndex : activeSuggestionIndex;
       const setIndex = isPokemonSearch ? setActivePokeSuggestionIndex : setActiveSuggestionIndex;
       const setShow = isPokemonSearch ? setShowPokeSuggestions : setShowSuggestions;
-      const setVal = isPokemonSearch ? setLocalPokemonName : setLocalSearch;
+      // Note: We handle selection logic slightly differently for main search smart fill
 
       if (!isShowing) {
           if (e.key === 'ArrowDown') {
@@ -293,8 +291,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       } else if (e.key === 'Enter') {
           e.preventDefault();
           if (activeIndex >= 0 && activeIndex < suggestionsList.length) {
-              setVal(suggestionsList[activeIndex]);
-              setShow(false);
+              handleSuggestionClick(suggestionsList[activeIndex], isPokemonSearch);
           } else {
               setShow(false);
           }
@@ -314,9 +311,12 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
     
     // 2. Selectors
     setFilter('pokemonName', localPokemonName);
+    setFilter('boosterName', localBoosterName);
     setFilter('language', localLanguage);
-    setFilter('series', localSeries);
-    setFilter('set', localSet);
+    
+    // Convert Sets back to arrays
+    setFilter('series', Array.from(localSeries));
+    setFilter('set', Array.from(localSet));
 
     // 3. Set-based Filters (Convert back to Arrays for global store)
     setFilter('pokemonTypes', Array.from(localPokemonTypes));
@@ -326,6 +326,8 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
     setFilter('gradingCompany', Array.from(localGradingCompany));
     setFilter('sealedProductType', Array.from(localSealedProductType));
     
+    setFilter('category', localCategory);
+
     setFilter('breakStatus', Array.from(localBreakStatus));
     
     // 4. Ranges
@@ -347,9 +349,10 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalScope(SearchScope.ALL);
       setLocalSort(SortOption.NEWEST);
       setLocalPokemonName('');
+      setLocalBoosterName('');
       setLocalLanguage('');
-      setLocalSeries('');
-      setLocalSet('');
+      setLocalSeries(new Set());
+      setLocalSet(new Set());
       setLocalPokemonTypes(new Set());
       setLocalCardCategories(new Set());
       setLocalVariantTags(new Set());
@@ -357,6 +360,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalGradingCompany(new Set());
       setLocalSealedProductType(new Set());
       setLocalBreakStatus(new Set());
+      setLocalCategory(undefined);
       setLocalPriceMin('');
       setLocalPriceMax('');
   };
@@ -367,7 +371,22 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
           setShowPokeSuggestions(false);
           pokeInputRef.current?.focus();
       } else {
-          setLocalSearch(value);
+          // Smart Search: Check if the value matches a known Set Name
+          const matchedSet = availableSets.find(s => s.name.toLowerCase() === value.toLowerCase());
+          
+          if (matchedSet) {
+              // Smart Auto-Fill Logic
+              // 1. Select the Set
+              setLocalSet(new Set([matchedSet.id]));
+              // 2. Select the corresponding Series
+              setLocalSeries(new Set([matchedSet.series]));
+              // 3. Clear the text search so the filter does the work
+              setLocalSearch('');
+          } else {
+              // Normal text search
+              setLocalSearch(value);
+          }
+          
           setShowSuggestions(false);
           searchInputRef.current?.focus();
       }
@@ -466,7 +485,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 onFocus={() => {
                                     if (localSearch) setShowSuggestions(true);
                                 }}
-                                placeholder="Search..."
+                                placeholder="Search sets, pokemon..."
                                 className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-shadow shadow-sm"
                                 autoComplete="off"
                                 aria-label="Search Query"
@@ -493,22 +512,29 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 <div ref={suggestionRef} className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-60 overflow-y-auto z-50">
                                     {suggestions.length > 0 ? (
                                         <ul id="search-results-list" role="listbox">
-                                            {suggestions.map((suggestion, idx) => (
-                                                <li 
-                                                    key={idx}
-                                                    id={`search-result-item-${idx}`}
-                                                    role="option"
-                                                    aria-selected={idx === activeSuggestionIndex}
-                                                    onClick={() => handleSuggestionClick(suggestion, false)}
-                                                    className={`px-4 py-3 text-sm cursor-pointer border-b border-gray-50 last:border-0 flex items-center justify-between transition-colors
-                                                        ${idx === activeSuggestionIndex ? 'bg-primary-50 text-primary-900' : 'hover:bg-gray-50 text-gray-700'}`}
-                                                >
-                                                    <span className="truncate">{highlightMatch(suggestion, localSearch)}</span>
-                                                    {idx === activeSuggestionIndex && (
-                                                        <svg className="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                                    )}
-                                                </li>
-                                            ))}
+                                            {suggestions.map((suggestion, idx) => {
+                                                // Check if it's a known set to visually indicate it will auto-filter
+                                                const isSet = availableSets.some(s => s.name.toLowerCase() === suggestion.toLowerCase());
+                                                return (
+                                                    <li 
+                                                        key={idx}
+                                                        id={`search-result-item-${idx}`}
+                                                        role="option"
+                                                        aria-selected={idx === activeSuggestionIndex}
+                                                        onClick={() => handleSuggestionClick(suggestion, false)}
+                                                        className={`px-4 py-3 text-sm cursor-pointer border-b border-gray-50 last:border-0 flex items-center justify-between transition-colors
+                                                            ${idx === activeSuggestionIndex ? 'bg-primary-50 text-primary-900' : 'hover:bg-gray-50 text-gray-700'}`}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            {isSet && <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold uppercase">Set</span>}
+                                                            <span className="truncate">{highlightMatch(suggestion, localSearch)}</span>
+                                                        </div>
+                                                        {idx === activeSuggestionIndex && (
+                                                            <svg className="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                                        )}
+                                                    </li>
+                                                );
+                                            })}
                                         </ul>
                                     ) : (
                                         <div className="px-4 py-3 text-sm text-gray-400 text-center italic">
@@ -631,7 +657,35 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </select>
                 </section>
 
-                {/* 2. Language */}
+                {/* 2. Product Category (Raw / Graded / Sealed) */}
+                <section>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Product Category</h3>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setLocalCategory(undefined)}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-colors ${
+                                !localCategory ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                            }`}
+                        >
+                            All
+                        </button>
+                        {Object.values(ProductCategory).map(cat => (
+                            <button
+                                type="button"
+                                key={cat}
+                                onClick={() => setLocalCategory(cat)}
+                                className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-colors ${
+                                    localCategory === cat ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                }`}
+                            >
+                                {cat === ProductCategory.RAW_CARD ? 'Raw' : (cat === ProductCategory.GRADED_CARD ? 'Graded' : 'Sealed')}
+                            </button>
+                        ))}
+                    </div>
+                </section>
+
+                {/* 2.5 Language */}
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Language</h3>
                     <select
@@ -646,66 +700,133 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </select>
                 </section>
 
+                {/* 5. Break Specific Filters (Only relevant for Breaks/Combined) */}
+                {(appMode === AppMode.BREAKS || appMode === AppMode.COMBINED) && (
+                    <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-4">
+                        <section>
+                            <h3 className="text-sm font-bold text-purple-900 mb-3 uppercase tracking-wide flex items-center gap-2">
+                                <span className="text-lg">📺</span> Break Status
+                            </h3>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { val: BreakStatus.OPEN, label: 'Open Spots' },
+                                    { val: BreakStatus.FULL_PENDING_SCHEDULE, label: 'Filling/Full' },
+                                    { val: BreakStatus.LIVE, label: 'Live Now' },
+                                    { val: BreakStatus.COMPLETED, label: 'Completed' }
+                                ].map(status => {
+                                    const isSelected = localBreakStatus.has(status.val);
+                                    return (
+                                        <button
+                                            type="button"
+                                            key={status.val}
+                                            onClick={() => toggleFilter(status.val, setLocalBreakStatus)}
+                                            aria-pressed={isSelected}
+                                            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                                                isSelected
+                                                ? 'bg-purple-600 text-white border-purple-600 shadow-md'
+                                                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {status.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </section>
+
+                        <section>
+                            <h3 className="text-sm font-bold text-purple-900 mb-3 uppercase tracking-wide">Booster / Product</h3>
+                            <input
+                                type="text"
+                                value={localBoosterName}
+                                onChange={(e) => setLocalBoosterName(e.target.value)}
+                                placeholder="e.g. 151, Lost Origin, ETB..."
+                                className="block w-full px-3 py-2 border border-purple-200 rounded-lg leading-5 bg-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
+                            />
+                        </section>
+                    </div>
+                )}
+
                 {/* 3. Era & Set (Dynamic from API) */}
                 <section>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Series & Set</h3>
-                    <div className="space-y-3">
-                        <div>
-                            <label htmlFor="series-select" className="block text-xs font-medium text-gray-500 mb-1">Era / Series</label>
-                            <select
-                                id="series-select"
-                                value={localSeries}
-                                onChange={(e) => {
-                                    setLocalSeries(e.target.value);
-                                    setLocalSet(''); // Reset set when series changes
-                                }}
-                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                    <div className="flex justify-between items-end mb-3">
+                        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Series & Set</h3>
+                        {(localSeries.size > 0 || localSet.size > 0) && (
+                            <button 
+                                onClick={() => { setLocalSeries(new Set()); setLocalSet(new Set()); }}
+                                className="text-[10px] text-red-600 hover:underline"
                             >
-                                <option value="">All Eras</option>
-                                {uniqueSeries.map(series => (
-                                    <option key={series} value={series}>{series}</option>
-                                ))}
-                            </select>
+                                Reset Selection
+                            </button>
+                        )}
+                    </div>
+                    
+                    <div className="space-y-4">
+                        {/* Series Selection - Multi Select Pills */}
+                        <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-2">Era / Series</label>
+                            <div className="flex flex-wrap gap-2">
+                                {uniqueSeries.map(series => {
+                                    const isSelected = localSeries.has(series);
+                                    return (
+                                        <button
+                                            key={series}
+                                            onClick={() => toggleFilter(series, setLocalSeries)}
+                                            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                                                isSelected 
+                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
+                                                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {series}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
+
+                        {/* Sets Selection - Multi Select Checkbox List */}
                         <div>
-                            <label htmlFor="set-select" className="block text-xs font-medium text-gray-500 mb-1">Set / Expansion</label>
-                            <select
-                                id="set-select"
-                                value={localSet}
-                                onChange={(e) => {
-                                    const newSetId = e.target.value;
-                                    setLocalSet(newSetId);
-                                    // Auto-select Series if a Set is chosen from "All Eras" view
-                                    if (newSetId && !localSeries) {
-                                        const set = availableSets.find(s => s.id === newSetId);
-                                        if (set) setLocalSeries(set.series);
-                                    }
-                                }}
-                                className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
-                                disabled={availableSets.length === 0}
-                            >
-                                <option value="">All Sets</option>
-                                {localSeries ? (
-                                    visibleSets.map(set => (
-                                        <option key={set.id} value={set.id}>{set.name} ({set.total})</option>
-                                    ))
+                            <label className="block text-xs font-medium text-gray-500 mb-2">Set / Expansion</label>
+                            <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-gray-50 p-2 space-y-1 custom-scrollbar">
+                                {visibleSets.length === 0 ? (
+                                    <div className="text-xs text-gray-400 text-center py-4">No sets available</div>
                                 ) : (
-                                    Object.entries(setsBySeries).sort().map(([series, sets]) => (
-                                        <optgroup key={series} label={series}>
-                                            {(sets as TcgSet[]).map(set => (
-                                                <option key={set.id} value={set.id}>{set.name} ({set.total})</option>
-                                            ))}
-                                        </optgroup>
+                                    visibleSets.map(set => (
+                                        <label key={set.id} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-white rounded-md transition-colors">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={localSet.has(set.id)}
+                                                onChange={() => {
+                                                    toggleFilter(set.id, setLocalSet);
+                                                    // Optional: If auto-selecting series is desired when checking a set
+                                                    // But multi-select logic usually implies independent control or strict hierarchy
+                                                    if (!localSeries.has(set.series)) {
+                                                        setLocalSeries(prev => new Set(prev).add(set.series));
+                                                    }
+                                                }}
+                                                className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
+                                            />
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-xs font-bold text-gray-700 truncate">{set.name}</div>
+                                                <div className="text-[10px] text-gray-400 flex justify-between">
+                                                    <span>{set.series}</span>
+                                                    <span>{set.total} cards</span>
+                                                </div>
+                                            </div>
+                                        </label>
                                     ))
                                 )}
-                            </select>
+                            </div>
                         </div>
                     </div>
                 </section>
 
                 {/* 4. Price Range */}
                 <section>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Price Range ($)</h3>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">
+                        {appMode === AppMode.BREAKS ? 'Entry Price ($)' : 'Price Range ($)'}
+                    </h3>
                     <div className="flex items-center gap-2">
                         <div className="relative flex-1">
                             <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
@@ -732,38 +853,6 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                         </div>
                     </div>
                 </section>
-
-                {/* 5. Break Status (Only relevant for Breaks/Combined) */}
-                {(appMode === AppMode.BREAKS || appMode === AppMode.COMBINED) && (
-                    <section>
-                        <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Break Status</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {[
-                                { val: BreakStatus.OPEN, label: 'Open Spots' },
-                                { val: BreakStatus.FULL_PENDING_SCHEDULE, label: 'Filling/Full' },
-                                { val: BreakStatus.LIVE, label: 'Live Now' },
-                                { val: BreakStatus.COMPLETED, label: 'Completed' }
-                            ].map(status => {
-                                const isSelected = localBreakStatus.has(status.val);
-                                return (
-                                    <button
-                                        type="button"
-                                        key={status.val}
-                                        onClick={() => toggleFilter(status.val, setLocalBreakStatus)}
-                                        aria-pressed={isSelected}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                                            isSelected
-                                            ? 'bg-purple-600 text-white border-purple-600 shadow-md'
-                                            : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                                        }`}
-                                    >
-                                        {status.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </section>
-                )}
 
                 {/* 6. Pokemon Types (Chips) */}
                 <section>
@@ -836,8 +925,31 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </div>
                 </section>
 
-                {/* 9. Product Category specific */}
-                {filters.category === ProductCategory.RAW_CARD && (
+                {/* 9. Grading Company - Moved to always visible since often requested */}
+                <section>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Grading Company</h3>
+                        <div className="flex flex-wrap gap-2">
+                        {Object.values(GradingCompany).map(company => {
+                            const isSelected = localGradingCompany.has(company);
+                            return (
+                                <button
+                                    type="button"
+                                    key={company}
+                                    onClick={() => toggleFilter(company, setLocalGradingCompany)}
+                                    aria-pressed={isSelected}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
+                                        isSelected ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    {company}
+                                </button>
+                            );
+                        })}
+                        </div>
+                </section>
+
+                {/* 10. Conditional Fields based on Category */}
+                {localCategory === ProductCategory.RAW_CARD && (
                     <section>
                          <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Condition</h3>
                          <div className="flex flex-wrap gap-2">
@@ -861,31 +973,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </section>
                 )}
 
-                {filters.category === ProductCategory.GRADED_CARD && (
-                    <section>
-                         <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Grading Company</h3>
-                         <div className="flex flex-wrap gap-2">
-                            {Object.values(GradingCompany).map(company => {
-                                const isSelected = localGradingCompany.has(company);
-                                return (
-                                    <button
-                                        type="button"
-                                        key={company}
-                                        onClick={() => toggleFilter(company, setLocalGradingCompany)}
-                                        aria-pressed={isSelected}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                                            isSelected ? 'bg-blue-100 border-blue-300 text-blue-800' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                                        }`}
-                                    >
-                                        {company}
-                                    </button>
-                                );
-                            })}
-                         </div>
-                    </section>
-                )}
-
-                {filters.category === ProductCategory.SEALED_PRODUCT && (
+                {localCategory === ProductCategory.SEALED_PRODUCT && (
                     <section>
                          <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Product Type</h3>
                          <div className="grid grid-cols-2 gap-2">

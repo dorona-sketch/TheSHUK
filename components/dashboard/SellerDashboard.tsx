@@ -166,7 +166,14 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ onNavigate, on
             {/* Header Area */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-gray-200 pb-6">
                 <div>
-                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Seller Dashboard</h1>
+                    <div className="flex items-center gap-2">
+                        <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Seller Dashboard</h1>
+                        {currentUser.isVerifiedSeller && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                Verified
+                            </span>
+                        )}
+                    </div>
                     <p className="text-gray-500 text-sm mt-1">Welcome back, {currentUser.name}. Here is what's happening today.</p>
                 </div>
                 <div className="flex gap-3">

@@ -5,13 +5,26 @@ import { MOCK_USER_BUYER, MOCK_USER_SELLER, SECONDARY_SELLER } from '../constant
 const DB_KEY = 'pokevault_users';
 const SESS_KEY = 'pokevault_session';
 
-const getUsers = (): User[] => {
-    if (typeof window === 'undefined') return [MOCK_USER_BUYER, MOCK_USER_SELLER, SECONDARY_SELLER];
+// Extended type for internal storage to include password
+interface StoredUser extends User {
+    password?: string;
+}
+
+const getUsers = (): StoredUser[] => {
+    if (typeof window === 'undefined') return [];
     const data = localStorage.getItem(DB_KEY);
-    return data ? JSON.parse(data) : [MOCK_USER_BUYER, MOCK_USER_SELLER, SECONDARY_SELLER];
+    if (!data) {
+        // Seed with default passwords
+        return [
+            { ...MOCK_USER_BUYER, password: 'password123' },
+            { ...MOCK_USER_SELLER, password: 'password123' },
+            { ...SECONDARY_SELLER, password: 'password123' }
+        ];
+    }
+    return JSON.parse(data);
 };
 
-const saveUsers = (users: User[]) => {
+const saveUsers = (users: StoredUser[]) => {
     if (typeof window !== 'undefined') {
         localStorage.setItem(DB_KEY, JSON.stringify(users));
     }
@@ -20,7 +33,11 @@ const saveUsers = (users: User[]) => {
 export const authService = {
     async init() {
         if (typeof window !== 'undefined' && !localStorage.getItem(DB_KEY)) {
-            saveUsers([MOCK_USER_BUYER, MOCK_USER_SELLER, SECONDARY_SELLER]);
+            saveUsers([
+                { ...MOCK_USER_BUYER, password: 'password123' },
+                { ...MOCK_USER_SELLER, password: 'password123' },
+                { ...SECONDARY_SELLER, password: 'password123' }
+            ]);
         }
     },
 
@@ -29,7 +46,12 @@ export const authService = {
         const sessId = localStorage.getItem(SESS_KEY);
         if (!sessId) return null;
         const users = getUsers();
-        return users.find(u => u.id === sessId) || null;
+        const user = users.find(u => u.id === sessId);
+        if (!user) return null;
+        
+        // Return safe user object without password
+        const { password, ...safeUser } = user;
+        return safeUser as User;
     },
 
     async login(email: string, password: string): Promise<{ user: User }> {
@@ -38,15 +60,54 @@ export const authService = {
         const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
         
         if (!user) throw new Error("Invalid credentials");
-        // Mock password check (allow any password > 6 chars if user exists)
-        if (password.length < 6) throw new Error("Invalid credentials");
+        
+        // Check password if it exists, otherwise legacy length check
+        if (user.password) {
+            if (user.password !== password) throw new Error("Invalid credentials");
+        } else if (password.length < 6) {
+            throw new Error("Invalid credentials");
+        }
 
         if (user.suspensionUntil && new Date(user.suspensionUntil) > new Date()) {
             throw new Error(`Account suspended until ${new Date(user.suspensionUntil).toLocaleDateString()}: ${user.suspensionReason}`);
         }
 
         localStorage.setItem(SESS_KEY, user.id);
-        return { user };
+        
+        const { password: _, ...safeUser } = user;
+        return { user: safeUser as User };
+    },
+
+    async socialLogin(provider: 'GOOGLE' | 'APPLE' | 'FACEBOOK'): Promise<{ user: User }> {
+        await new Promise(r => setTimeout(r, 1000)); // Simulate provider redirect/popup
+        const users = getUsers();
+        // Mock a stable user email for each provider so re-login works in this demo
+        const email = `demo.${provider.toLowerCase()}@example.com`;
+        
+        let user = users.find(u => u.email === email);
+        
+        if (!user) {
+            const providerName = provider.charAt(0) + provider.slice(1).toLowerCase();
+            user = {
+                id: `u_${provider.toLowerCase()}_${Date.now()}`,
+                name: `${providerName} User`,
+                displayName: `${providerName} User`,
+                email: email,
+                role: 'BUYER', // Default to buyer for social signup
+                walletBalance: 1000, // Sign up bonus
+                joinedAt: new Date(),
+                isEmailVerified: true, // Social accounts usually verified
+                onboarding: { buyer: { step: 0, skipped: false } },
+                password: `social_${Date.now()}` // Dummy password
+            };
+            users.push(user);
+            saveUsers(users);
+        }
+        
+        localStorage.setItem(SESS_KEY, user.id);
+        
+        const { password, ...safeUser } = user;
+        return { user: safeUser as User };
     },
 
     async register(name: string, email: string, password: string, role: 'BUYER' | 'SELLER'): Promise<{ user: User }> {
@@ -56,7 +117,7 @@ export const authService = {
             throw new Error("Email already registered");
         }
 
-        const newUser: User = {
+        const newUser: StoredUser = {
             id: `u_${Date.now()}`,
             name,
             email,
@@ -65,13 +126,16 @@ export const authService = {
             joinedAt: new Date(),
             isEmailVerified: false,
             // Init onboarding
-            onboarding: role === 'SELLER' ? { seller: { step: 0, skipped: false } } : { buyer: { step: 0, skipped: false } }
+            onboarding: role === 'SELLER' ? { seller: { step: 0, skipped: false } } : { buyer: { step: 0, skipped: false } },
+            password: password // Store password
         };
 
         users.push(newUser);
         saveUsers(users);
         localStorage.setItem(SESS_KEY, newUser.id);
-        return { user: newUser };
+        
+        const { password: _, ...safeUser } = newUser;
+        return { user: safeUser as User };
     },
 
     async logout() {
@@ -87,13 +151,15 @@ export const authService = {
         const updated = { ...users[idx], ...updates };
         users[idx] = updated;
         saveUsers(users);
-        return updated;
+        
+        const { password, ...safeUser } = updated;
+        return safeUser as User;
     },
 
     async requestPasswordReset(email: string) {
         await new Promise(r => setTimeout(r, 500));
         const users = getUsers();
-        if (!users.find(u => u.email === email)) throw new Error("User not found");
+        if (!users.find(u => u.email.toLowerCase() === email.toLowerCase())) throw new Error("User not found");
         return { success: true, message: "Reset code sent to email" };
     },
 
@@ -101,7 +167,15 @@ export const authService = {
         await new Promise(r => setTimeout(r, 800));
         // Mock verification
         if (code !== '123456') return { success: false, message: "Invalid code" };
-        return { success: true, message: "Password updated" };
+        
+        const users = getUsers();
+        const idx = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+        if (idx === -1) return { success: false, message: "User not found" };
+
+        users[idx].password = newPass;
+        saveUsers(users);
+
+        return { success: true, message: "Password updated successfully" };
     },
 
     async sendVerificationCode(email: string, userId: string) {
@@ -118,7 +192,7 @@ export const authService = {
 
     async getAllUsers(): Promise<User[]> {
         await new Promise(r => setTimeout(r, 300));
-        return getUsers();
+        return getUsers().map(({password, ...u}) => u as User);
     },
 
     async suspendUser(userId: string, reason: string, until: Date): Promise<{ success: boolean; message: string }> {

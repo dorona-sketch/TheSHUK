@@ -7,6 +7,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  socialLogin: (provider: 'GOOGLE' | 'APPLE' | 'FACEBOOK') => Promise<void>;
   register: (name: string, email: string, password: string, role: 'BUYER' | 'SELLER') => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
@@ -38,6 +39,11 @@ export const AuthProvider = ({ children }: PropsWithChildren<{}>) => {
 
   const login = async (email: string, password: string) => {
     const response = await authService.login(email, password);
+    setUser(response.user);
+  };
+
+  const socialLogin = async (provider: 'GOOGLE' | 'APPLE' | 'FACEBOOK') => {
+    const response = await authService.socialLogin(provider);
     setUser(response.user);
   };
 
@@ -104,6 +110,7 @@ export const AuthProvider = ({ children }: PropsWithChildren<{}>) => {
         user, 
         loading, 
         login, 
+        socialLogin,
         register, 
         logout, 
         updateProfile, 

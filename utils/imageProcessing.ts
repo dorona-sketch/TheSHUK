@@ -75,9 +75,10 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                 const cv = window.cv;
                 const src = cv.imread(img);
                 
-                // Downscale for processing speed
+                // Downscale for processing speed but keep enough detail for edge detection
                 const dsize = new cv.Size(0, 0);
-                const scale = Math.min(800 / src.cols, 1); 
+                const maxDim = 800;
+                const scale = Math.min(maxDim / src.cols, maxDim / src.rows, 1); 
                 const dst = new cv.Mat();
                 
                 if (scale < 1) {
@@ -86,104 +87,122 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                     src.copyTo(dst);
                 }
 
+                // 1. Grayscale
                 const gray = new cv.Mat();
                 cv.cvtColor(dst, gray, cv.COLOR_RGBA2GRAY, 0);
                 
+                // 2. Gaussian Blur (Reduce noise)
                 const blurred = new cv.Mat();
                 cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
                 
+                // 3. Canny Edge Detection
                 const edges = new cv.Mat();
-                cv.Canny(blurred, edges, 75, 200);
+                cv.Canny(blurred, edges, 50, 150); // Tuned thresholds
                 
+                // 4. Morphological Closing (Connect gaps in edges)
+                const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+                const morph = new cv.Mat();
+                cv.morphologyEx(edges, morph, cv.MORPH_CLOSE, kernel);
+
+                // 5. Find Contours
                 const contours = new cv.MatVector();
                 const hierarchy = new cv.Mat();
-                cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+                cv.findContours(morph, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
                 let maxArea = 0;
-                let maxContour = null;
+                let bestApprox = null;
+                // Minimum area threshold (10% of image)
+                const minArea = (dst.cols * dst.rows) * 0.1;
 
                 for (let i = 0; i < contours.size(); ++i) {
                     const cnt = contours.get(i);
                     const area = cv.contourArea(cnt);
-                    // Threshold: > 5% of image area
-                    if (area > (dst.cols * dst.rows * 0.05) && area > maxArea) {
-                        maxArea = area;
-                        maxContour = cnt;
+                    
+                    if (area > minArea) {
+                        const peri = cv.arcLength(cnt, true);
+                        const approx = new cv.Mat();
+                        // Approximate polygon (0.02 epsilon is standard for rectangles)
+                        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+
+                        // Look for 4 corners and Convex shape
+                        if (approx.rows === 4 && cv.isContourConvex(approx)) {
+                            if (area > maxArea) {
+                                maxArea = area;
+                                if (bestApprox) bestApprox.delete();
+                                bestApprox = approx; // Keep reference to Mat
+                            } else {
+                                approx.delete();
+                            }
+                        } else {
+                            approx.delete();
+                        }
                     }
                 }
 
                 let resultBase64: string | null = null;
 
-                if (maxContour) {
-                    const peri = cv.arcLength(maxContour, true);
-                    const approx = new cv.Mat();
-                    // Approximate polygon (0.02 epsilon is standard for rectangles)
-                    cv.approxPolyDP(maxContour, approx, 0.02 * peri, true);
-
-                    if (approx.rows === 4) {
-                        // Found a quad!
-                        const points = [];
-                        for(let i = 0; i < 4; i++) {
-                            points.push({
-                                x: approx.data32S[i * 2],
-                                y: approx.data32S[i * 2 + 1]
-                            });
-                        }
-
-                        // Scale points back to original image coords
-                        const scaledPoints = points.map(p => ({
-                            x: p.x / scale,
-                            y: p.y / scale
-                        }));
-
-                        // Sort points: TL, TR, BR, BL
-                        const [tl, tr, br, bl] = orderPoints(scaledPoints);
-
-                        // Calculate width/height for flattening
-                        const widthA = Math.hypot(br.x - bl.x, br.y - bl.y);
-                        const widthB = Math.hypot(tr.x - tl.x, tr.y - tl.y);
-                        const maxWidth = Math.max(widthA, widthB);
-
-                        const heightA = Math.hypot(tr.x - br.x, tr.y - br.y);
-                        const heightB = Math.hypot(tl.x - bl.x, tl.y - bl.y);
-                        const maxHeight = Math.max(heightA, heightB);
-
-                        // Destination points (Flat Rectangle)
-                        const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-                            0, 0,
-                            maxWidth - 1, 0,
-                            maxWidth - 1, maxHeight - 1,
-                            0, maxHeight - 1
-                        ]);
-
-                        // Source points
-                        const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-                            tl.x, tl.y,
-                            tr.x, tr.y,
-                            br.x, br.y,
-                            bl.x, bl.y
-                        ]);
-
-                        // Perspective Warp
-                        const M = cv.getPerspectiveTransform(srcTri, dstTri);
-                        const warped = new cv.Mat();
-                        const dsizeWarp = new cv.Size(maxWidth, maxHeight);
-                        cv.warpPerspective(src, warped, M, dsizeWarp, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
-
-                        // Render to canvas
-                        const canvas = document.createElement('canvas');
-                        cv.imshow(canvas, warped);
-                        resultBase64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-
-                        // Cleanup
-                        M.delete(); warped.delete(); srcTri.delete(); dstTri.delete();
+                if (bestApprox) {
+                    // Extract points from best contour approximation
+                    const points = [];
+                    for(let i = 0; i < 4; i++) {
+                        points.push({
+                            x: bestApprox.data32S[i * 2],
+                            y: bestApprox.data32S[i * 2 + 1]
+                        });
                     }
-                    approx.delete();
+
+                    // Scale points back to original image coords
+                    const scaledPoints = points.map(p => ({
+                        x: p.x / scale,
+                        y: p.y / scale
+                    }));
+
+                    // Sort points: TL, TR, BR, BL
+                    const [tl, tr, br, bl] = orderPoints(scaledPoints);
+
+                    // Calculate destination width/height for flattening
+                    const widthA = Math.hypot(br.x - bl.x, br.y - bl.y);
+                    const widthB = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+                    const maxWidth = Math.max(widthA, widthB);
+
+                    const heightA = Math.hypot(tr.x - br.x, tr.y - br.y);
+                    const heightB = Math.hypot(tl.x - bl.x, tl.y - bl.y);
+                    const maxHeight = Math.max(heightA, heightB);
+
+                    // Destination points (Flat Rectangle)
+                    const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                        0, 0,
+                        maxWidth, 0,
+                        maxWidth, maxHeight,
+                        0, maxHeight
+                    ]);
+
+                    // Source points
+                    const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                        tl.x, tl.y,
+                        tr.x, tr.y,
+                        br.x, br.y,
+                        bl.x, bl.y
+                    ]);
+
+                    // Perspective Warp
+                    const M = cv.getPerspectiveTransform(srcTri, dstTri);
+                    const warped = new cv.Mat();
+                    const dsizeWarp = new cv.Size(maxWidth, maxHeight);
+                    cv.warpPerspective(src, warped, M, dsizeWarp, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+                    // Render to canvas
+                    const canvas = document.createElement('canvas');
+                    cv.imshow(canvas, warped);
+                    resultBase64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+
+                    // Cleanup
+                    M.delete(); warped.delete(); srcTri.delete(); dstTri.delete(); bestApprox.delete();
                 }
 
                 // Global cleanup
                 src.delete(); dst.delete(); gray.delete(); blurred.delete(); edges.delete(); 
-                contours.delete(); hierarchy.delete();
+                contours.delete(); hierarchy.delete(); morph.delete(); kernel.delete();
 
                 resolve(resultBase64);
             } catch (e) {
@@ -231,9 +250,9 @@ export const performPerspectiveWarp = async (base64Image: string, points: {x: nu
                     // Perspective Transform
                     const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
                         0, 0,
-                        maxWidth - 1, 0,
-                        maxWidth - 1, maxHeight - 1,
-                        0, maxHeight - 1
+                        maxWidth, 0,
+                        maxWidth, maxHeight,
+                        0, maxHeight
                     ]);
 
                     const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [

@@ -32,7 +32,7 @@ export const ListingCard = React.memo<ListingCardProps>(({
   const isOwner = currentUserId && listing.sellerId === currentUserId;
 
   // --- Date & Status Logic ---
-  let targetDate: Date | undefined;
+  let targetDate: Date | string | undefined | null;
   let timerLabel = '';
   let badgeColorClass = 'bg-gray-900/80 text-amber-400';
   let statusBadge: React.ReactNode = null;
@@ -249,6 +249,9 @@ export const ListingCard = React.memo<ListingCardProps>(({
                 <div>
                   <p className="text-xs text-gray-500">{isAuction ? 'Current Bid' : (isBreak ? 'Entry' : 'Price')}</p>
                   <p className="text-lg font-bold text-gray-900">${isAuction ? listing.currentBid.toLocaleString() : listing.price.toLocaleString()}</p>
+                  {isAuction && listing.reservePrice && listing.currentBid < listing.reservePrice && (
+                      <span className="text-[10px] text-red-500 font-medium block">Reserve not met</span>
+                  )}
                 </div>
             </div>
 

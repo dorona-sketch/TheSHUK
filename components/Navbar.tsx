@@ -64,17 +64,39 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
               <span className="font-bold text-xl text-gray-900 tracking-tight hidden sm:block">PokeVault</span>
             </div>
 
-            {/* App Mode Switcher (Desktop) */}
-            <button 
-                onClick={handleModeToggle}
-                className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-700 transition-colors border border-gray-200"
-                title="Switch App Mode"
-            >
-                <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                </svg>
-                {getModeLabel()}
-            </button>
+            {/* App Mode Segmented Control (Desktop) */}
+            <div className="hidden md:flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+                <button
+                    onClick={() => setAppMode(AppMode.MARKETPLACE)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                        appMode === AppMode.MARKETPLACE 
+                        ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' 
+                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'
+                    }`}
+                >
+                    Marketplace
+                </button>
+                <button
+                    onClick={() => setAppMode(AppMode.BREAKS)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                        appMode === AppMode.BREAKS 
+                        ? 'bg-white text-purple-700 shadow-sm ring-1 ring-black/5' 
+                        : 'text-gray-500 hover:text-purple-700 hover:bg-gray-200/50'
+                    }`}
+                >
+                    Breaks
+                </button>
+                <button
+                    onClick={() => setAppMode(AppMode.COMBINED)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                        appMode === AppMode.COMBINED 
+                        ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' 
+                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'
+                    }`}
+                >
+                    All
+                </button>
+            </div>
           </div>
           
           <div className="flex items-center gap-4">

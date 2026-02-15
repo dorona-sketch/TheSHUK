@@ -70,6 +70,45 @@ export const getLocationInfo = async (location: string): Promise<{ text: string,
   }
 };
 
+// --- Visual Identification (Fallback) ---
+export const identifyCardVisual = async (base64Image: string): Promise<{ cardName: string, setName: string, number: string, rarity: string } | null> => {
+    const client = getClient();
+    if (!client) return null;
+
+    try {
+        console.time("Gemini:VisualID");
+        const response = await client.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
+                    { text: `Identify this Pokemon card details. Return JSON.` }
+                ]
+            },
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        cardName: { type: Type.STRING },
+                        setName: { type: Type.STRING },
+                        number: { type: Type.STRING, description: "Collector number like 058/102" },
+                        rarity: { type: Type.STRING }
+                    },
+                    required: ["cardName", "setName"]
+                }
+            }
+        });
+        console.timeEnd("Gemini:VisualID");
+        
+        const rawText = response.text;
+        return JSON.parse(cleanJson(rawText));
+    } catch (e) {
+        console.warn("Visual ID failed", e);
+        return null;
+    }
+};
+
 // --- OCR Extraction (Used by CardRecognitionService) ---
 export const performOcrOnCorners = async (
     leftCornerBase64: string, 
