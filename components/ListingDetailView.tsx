@@ -306,7 +306,7 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
     const related = useMemo(() => getRelatedListings(listing) || [], [listing, getRelatedListings]);
     
     const [scheduleDate, setScheduleDate] = useState<string>('');
-    const [streamLink, setStreamLink] = useState<string>('https://twitch.tv/pokevault_official');
+    const [streamLink, setStreamLink] = useState<string>('https://twitch.tv/break-hit_official');
     const [isScheduling, setIsScheduling] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
     const [apiCard, setApiCard] = useState<any>(null);
@@ -436,7 +436,7 @@ export const ListingDetailView: React.FC<ListingDetailViewProps> = ({
                             ? 'bg-gray-800 hover:bg-gray-900 text-white' 
                             : (isAuction 
                                 ? 'bg-amber-500 hover:bg-amber-600 text-white' 
-                                : 'bg-shuk-primary hover:bg-cyan-400 text-shuk-dark hover:shadow-[0_0_20px_rgba(34,211,238,0.4)]') 
+                                : 'bg-breakhit-primary hover:bg-cyan-400 text-breakhit-dark hover:shadow-[0_0_20px_rgba(34,211,238,0.4)]') 
                         }`}
                     >
                         {isOwner ? 'Edit Listing Details' : (isAuction ? 'Place Bid' : `Buy Now • $${listing.price.toLocaleString()}`)}

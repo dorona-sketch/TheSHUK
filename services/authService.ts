@@ -2,9 +2,9 @@
 import { User } from '../types';
 import { MOCK_USER_BUYER, MOCK_USER_SELLER, SECONDARY_SELLER } from '../constants';
 
-const DB_KEY = 'pokevault_users';
-const SESS_KEY = 'pokevault_session';
-const CODES_KEY = 'pokevault_verification_codes';
+const DB_KEY = 'break-hit_users';
+const SESS_KEY = 'break-hit_session';
+const CODES_KEY = 'break-hit_verification_codes';
 
 // Extended type for internal storage to include password
 interface StoredUser extends User {

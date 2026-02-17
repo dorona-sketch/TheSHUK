@@ -26,7 +26,7 @@ import { BuyerOnboarding } from './components/onboarding/BuyerOnboarding';
 import { SellerOnboarding } from './components/onboarding/SellerOnboarding';
 import { Listing, ListingType, AppMode, BreakStatus } from './types';
 import { BidModal } from './components/bids/BidModal';
-import { ShukFrame } from './components/ui/ShukFrame';
+import { BreakHitFrame } from './components/ui/BreakHitFrame';
 import { EmailVerificationModal } from './components/auth/EmailVerificationModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -80,6 +80,9 @@ const AppContent = () => {
   const handleNavigate = (view: any, id?: string) => {
     setCurrentView(view);
     setSelectedId(id);
+    if (view === 'HOME') {
+        setAppMode(AppMode.COMBINED);
+    }
     if (appMode !== AppMode.COMBINED) {
         window.scrollTo(0, 0);
     }
@@ -136,21 +139,21 @@ const AppContent = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 mt-4 gap-4">
             <div>
                 <h1 className="text-3xl font-display font-bold text-white tracking-tight">
-                    {appMode === AppMode.MARKETPLACE ? 'Marketplace' : (appMode === AppMode.BREAKS ? 'Live Breaks' : 'The Shuk')}
+                    {appMode === AppMode.MARKETPLACE ? 'Marketplace' : (appMode === AppMode.BREAKS ? 'Live Breaks' : 'Break-Hit')}
                 </h1>
-                <div className="h-1 w-20 bg-shuk-primary mt-2 rounded-full"></div>
+                <div className="h-1 w-20 bg-breakhit-primary mt-2 rounded-full"></div>
             </div>
             <div className="flex items-center gap-3 w-full md:w-auto">
                 <button
                     onClick={() => setIsSellModalOpen(true)}
-                    className="inline-flex items-center px-4 py-2.5 bg-shuk-primary text-shuk-dark text-sm font-bold rounded-lg hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.3)]"
+                    className="inline-flex items-center px-4 py-2.5 bg-breakhit-primary text-breakhit-dark text-sm font-bold rounded-lg hover:bg-cyan-300 transition-all shadow-[0_0_15px_rgba(34,211,238,0.3)]"
                 >
                     <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                     Sell
                 </button>
                 <button
                     onClick={() => setFilterDrawerOpen(true)}
-                    className="inline-flex items-center px-3 py-2.5 border border-shuk-border rounded-lg text-sm font-medium text-shuk-silver bg-shuk-surface hover:bg-shuk-surfaceHigh transition-colors"
+                    className="inline-flex items-center px-3 py-2.5 border border-breakhit-border rounded-lg text-sm font-medium text-breakhit-silver bg-breakhit-surface hover:bg-breakhit-surfaceHigh transition-colors"
                 >
                     <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
                     Filters
@@ -158,7 +161,7 @@ const AppContent = () => {
             </div>
         </div>
         {filteredListings.length === 0 ? (
-            <div className="text-center py-20 text-shuk-muted">No items found matching your criteria.</div>
+            <div className="text-center py-20 text-breakhit-muted">No items found matching your criteria.</div>
         ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredListings.map(listing => (
@@ -191,6 +194,7 @@ const AppContent = () => {
                         window.scrollTo(0,0);
                     }}
                     onInteract={handleInteraction} 
+                    currentUserId={currentUser?.id}
                 />
             );
         } else {
@@ -215,7 +219,7 @@ const AppContent = () => {
                         onViewListing={handleViewListing}
                         onWatchLive={(l) => handleNavigate('LIVE', l.id)}
                     />
-                ) : <div className="text-center p-8 text-shuk-silver">Listing not found</div>}
+                ) : <div className="text-center p-8 text-breakhit-silver">Listing not found</div>}
             </div>
         );
         break;
@@ -245,15 +249,15 @@ const AppContent = () => {
     case 'CHAT':
         content = (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-20 h-[calc(100vh-64px)]">
-                <div className="h-full border border-shuk-border rounded-xl overflow-hidden flex shadow-lg bg-shuk-surface">
-                    <div className={`w-full md:w-1/3 border-r border-shuk-border ${selectedId ? 'hidden md:flex' : 'flex'}`}>
+                <div className="h-full border border-breakhit-border rounded-xl overflow-hidden flex shadow-lg bg-breakhit-surface">
+                    <div className={`w-full md:w-1/3 border-r border-breakhit-border ${selectedId ? 'hidden md:flex' : 'flex'}`}>
                         <Inbox currentUser={currentUser!} onSelect={(cid) => setSelectedId(cid)} selectedId={selectedId} />
                     </div>
                     <div className={`w-full md:w-2/3 ${!selectedId ? 'hidden md:flex' : 'flex'}`}>
                         {selectedId ? (
                             <ChatWrapper conversationId={selectedId} currentUser={currentUser!} onBack={() => setSelectedId(undefined)} />
                         ) : (
-                            <div className="hidden md:flex items-center justify-center w-full h-full text-shuk-muted bg-shuk-dark/50">Select a conversation</div>
+                            <div className="hidden md:flex items-center justify-center w-full h-full text-breakhit-muted bg-breakhit-dark/50">Select a conversation</div>
                         )}
                     </div>
                 </div>
@@ -299,7 +303,7 @@ const AppContent = () => {
   }
 
   return (
-    <ShukFrame variant="app-shell" className="h-screen w-screen fixed inset-0 flex flex-col">
+    <BreakHitFrame variant="app-shell" className="h-screen w-screen fixed inset-0 flex flex-col">
       <Navbar currentUser={currentUser} onNavigate={handleNavigate} onSell={() => setIsSellModalOpen(true)} />
       
       <main className={mainClass}>
@@ -345,7 +349,7 @@ const AppContent = () => {
               <SellerOnboarding onComplete={() => setShowOnboarding(false)} onSkip={() => setShowOnboarding(false)} />
           )
       )}
-    </ShukFrame>
+    </BreakHitFrame>
   );
 };
 
@@ -355,7 +359,7 @@ const ChatWrapper: React.FC<{ conversationId: string, currentUser: any, onBack: 
         selectConversation(conversationId);
     }, [conversationId]);
 
-    if (loading || !activeConversation || activeConversation.id !== conversationId) return <div className="p-10 text-center text-shuk-muted">Loading chat...</div>;
+    if (loading || !activeConversation || activeConversation.id !== conversationId) return <div className="p-10 text-center text-breakhit-muted">Loading chat...</div>;
     return <ChatThread conversation={activeConversation} currentUser={currentUser} onBack={onBack} />;
 }
 
