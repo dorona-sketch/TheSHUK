@@ -72,7 +72,7 @@ const normalizeSearchText = (value: string) => {
         'aa': 'alternate art'
     };
     Object.entries(synonymMap).forEach(([from, to]) => {
-        text = text.replace(new RegExp(`\\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g'), to);
+        text = text.replace(new RegExp(`\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\b`, 'g'), to);
     });
     return text;
 };
@@ -269,6 +269,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       const eras = new Set(effectiveSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
       return ERA_ORDER.filter(era => eras.has(era));
   }, [effectiveSets]);
+
+  const uniqueEras = useMemo(() => {
+      const eras = new Set(availableSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
+      return ERA_ORDER.filter(era => eras.has(era));
+  }, [availableSets]);
 
   const visibleSets = useMemo(() => {
       let sets = effectiveSets;
@@ -687,7 +692,6 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </select>
                 </section>
 
-                {appMode === AppMode.MARKETPLACE && (
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Description Contains</h3>
                     <input
@@ -698,7 +702,6 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                         className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     />
                 </section>
-                )}
 
                 {appMode === AppMode.MARKETPLACE && (
                     <section>
