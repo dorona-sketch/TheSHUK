@@ -100,7 +100,7 @@ export const ListingCard = React.memo<ListingCardProps>(({
                     <button
                         onClick={handleMainAction}
                         disabled={!isOwner && isEnded}
-                        className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider 
+                        className={`min-h-[40px] px-3.5 py-2 rounded text-sm font-bold uppercase tracking-wider 
                             ${isOwner 
                                 ? 'bg-gray-700 text-gray-200' 
                                 : 'bg-shuk-primary text-shuk-dark hover:bg-cyan-300'
@@ -159,7 +159,7 @@ export const ListingCard = React.memo<ListingCardProps>(({
                 </div>
                 <button
                     onClick={handleMainAction}
-                    className="bg-shuk-primary/10 text-shuk-primary hover:bg-shuk-primary hover:text-shuk-dark border border-shuk-primary/50 px-3 py-1.5 rounded text-xs font-bold uppercase transition-all"
+                    className="min-h-[40px] bg-shuk-primary/10 text-shuk-primary hover:bg-shuk-primary hover:text-shuk-dark border border-shuk-primary/50 px-3.5 py-2 rounded text-sm font-bold uppercase transition-all"
                 >
                     {actionLabel}
                 </button>
