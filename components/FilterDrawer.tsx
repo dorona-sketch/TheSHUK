@@ -725,6 +725,8 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </section>
                 )}
 
+                {appMode === AppMode.MARKETPLACE && (
+                <>
                 {/* Product Category */}
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Product Category</h3>
@@ -752,6 +754,8 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                         ))}
                     </div>
                 </section>
+                </>
+                )}
 
                 {/* Series & Set */}
                 <section>
