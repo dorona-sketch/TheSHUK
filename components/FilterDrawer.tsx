@@ -73,6 +73,7 @@ const normalizeSearchText = (value: string) => {
     };
     Object.entries(synonymMap).forEach(([from, to]) => {
         text = text.replace(new RegExp(`\\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g'), to);
+        text = text.replace(new RegExp(`\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\b`, 'g'), to);
     });
     return text;
 };
@@ -270,6 +271,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       const eras = new Set(effectiveSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
       return ERA_ORDER.filter(era => eras.has(era));
   }, [effectiveSets]);
+
+  const uniqueEras = useMemo(() => {
+      const eras = new Set(availableSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
+      return ERA_ORDER.filter(era => eras.has(era));
+  }, [availableSets]);
 
   const visibleSets = useMemo(() => {
       let sets = effectiveSets;
