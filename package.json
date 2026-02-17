@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "check:duplicates": "node scripts/check-duplicate-symbols.mjs",
-    "verify": "npm run check:duplicates && npm run build"
+    "verify": "npm run check:duplicates && npm run build",
+    "cap:sync:ios": "npm run build && npx cap sync ios",
+    "cap:open:ios": "npx cap open ios"
   },
   "dependencies": {
     "@capacitor/cli": "^8.1.0",

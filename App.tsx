@@ -80,6 +80,9 @@ const AppContent = () => {
   const handleNavigate = (view: any, id?: string) => {
     setCurrentView(view);
     setSelectedId(id);
+    if (view === 'HOME') {
+        setAppMode(AppMode.COMBINED);
+    }
     if (appMode !== AppMode.COMBINED) {
         window.scrollTo(0, 0);
     }
@@ -191,6 +194,7 @@ const AppContent = () => {
                         window.scrollTo(0,0);
                     }}
                     onInteract={handleInteraction} 
+                    currentUserId={currentUser?.id}
                 />
             );
         } else {

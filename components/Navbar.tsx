@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { User, AppMode } from '../types';
+import { User } from '../types';
 import { useChat } from '../context/ChatContext';
 import { useStore } from '../context/StoreContext';
 import { NotificationDropdown } from './NotificationDropdown';
@@ -13,7 +13,7 @@ interface NavbarProps {
 
 export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell }) => {
   const { totalUnreadCount } = useChat();
-  const { appMode, setAppMode, notifications } = useStore();
+  const { notifications } = useStore();
   const [showNotifications, setShowNotifications] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -52,20 +52,6 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
               </div>
             </div>
 
-            <div className="hidden md:flex items-center gap-2">
-              <button
-                onClick={() => { setAppMode(AppMode.MARKETPLACE); onNavigate('MARKETPLACE'); }}
-                className={`px-3 py-1.5 rounded-md text-xs font-bold border transition-colors ${appMode === AppMode.MARKETPLACE ? 'bg-shuk-primary text-shuk-dark border-shuk-primary' : 'bg-shuk-surface text-shuk-silver border-shuk-border hover:bg-shuk-surfaceHigh'}`}
-              >
-                Marketplace
-              </button>
-              <button
-                onClick={() => { setAppMode(AppMode.BREAKS); onNavigate('HOME'); }}
-                className={`px-3 py-1.5 rounded-md text-xs font-bold border transition-colors ${appMode === AppMode.BREAKS ? 'bg-shuk-primary text-shuk-dark border-shuk-primary' : 'bg-shuk-surface text-shuk-silver border-shuk-border hover:bg-shuk-surfaceHigh'}`}
-              >
-                Breaks
-              </button>
-            </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-3 md:gap-4">
@@ -90,7 +76,7 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
                 <div className="relative" ref={notifRef}>
                   <button
                     onClick={() => setShowNotifications(!showNotifications)}
-                    className="p-2 text-shuk-muted hover:text-shuk-primary hover:bg-shuk-surfaceHigh rounded-full transition-colors relative"
+                    className="w-10 h-10 inline-flex items-center justify-center text-shuk-muted hover:text-shuk-primary hover:bg-shuk-surfaceHigh rounded-full transition-colors relative"
                     aria-label={`Notifications ${unreadNotifs > 0 ? `(${unreadNotifs} unread)` : ''}`}
                   >
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
@@ -99,12 +85,12 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
                   {showNotifications && <NotificationDropdown onClose={() => setShowNotifications(false)} onNavigate={(id) => onNavigate('DETAILS', id)} />}
                 </div>
 
-                <button onClick={() => onNavigate('CHAT')} className="relative p-2 text-shuk-muted hover:text-shuk-primary hover:bg-shuk-surfaceHigh rounded-full transition-colors" aria-label={`Messages ${totalUnreadCount > 0 ? `(${totalUnreadCount} unread)` : ''}`}>
+                <button onClick={() => onNavigate('CHAT')} className="relative w-10 h-10 inline-flex items-center justify-center text-shuk-muted hover:text-shuk-primary hover:bg-shuk-surfaceHigh rounded-full transition-colors" aria-label={`Messages ${totalUnreadCount > 0 ? `(${totalUnreadCount} unread)` : ''}`}>
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                   {totalUnreadCount > 0 && <span className="absolute top-1 right-0 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold text-shuk-dark translate-x-1/4 -translate-y-1/4 bg-shuk-primary rounded-full min-w-[18px]">{totalUnreadCount}</span>}
                 </button>
 
-                <div className="flex items-center gap-2 cursor-pointer hover:bg-shuk-surfaceHigh p-1.5 rounded-full transition-colors" onClick={() => onNavigate('PROFILE')} role="button" tabIndex={0} aria-label="User Profile">
+                <div className="flex items-center gap-2 cursor-pointer hover:bg-shuk-surfaceHigh px-2 py-1.5 min-h-[40px] rounded-full transition-colors" onClick={() => onNavigate('PROFILE')} role="button" tabIndex={0} aria-label="User Profile">
                   <div className="h-8 w-8 rounded-full bg-shuk-surface border border-shuk-border flex items-center justify-center text-shuk-silver font-bold overflow-hidden">
                     {currentUser.avatar ? <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" /> : currentUser.name.charAt(0)}
                   </div>
@@ -118,16 +104,9 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
             )}
           </div>
         </div>
-
-        <div className="md:hidden py-2 border-t border-shuk-border flex justify-between gap-3 px-1 items-center bg-shuk-dark">
-          <div className="flex items-center gap-2">
-            <button onClick={() => { setAppMode(AppMode.MARKETPLACE); onNavigate('MARKETPLACE'); }} className={`text-xs font-bold ${appMode === AppMode.MARKETPLACE ? 'text-shuk-primary' : 'text-shuk-muted'}`}>Marketplace</button>
-            <button onClick={() => { setAppMode(AppMode.BREAKS); onNavigate('HOME'); }} className={`text-xs font-bold ${appMode === AppMode.BREAKS ? 'text-shuk-primary' : 'text-shuk-muted'}`}>Breaks</button>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <button onClick={onSell} className="text-xs font-bold text-shuk-silver">Sell</button>
-            <button onClick={() => onNavigate('COMMUNITY')} className="text-xs font-bold text-shuk-muted">Community</button>
-          </div>
+        <div className="md:hidden py-2 border-t border-shuk-border flex justify-end gap-2 px-1 items-center bg-shuk-dark">
+          <button onClick={onSell} className="text-xs font-bold text-shuk-silver min-h-[40px] px-2">Sell</button>
+          <button onClick={() => onNavigate('COMMUNITY')} className="text-xs font-bold text-shuk-muted min-h-[40px] px-2">Community</button>
         </div>
       </div>
     </nav>

@@ -305,6 +305,17 @@ export const useMarketplaceStore = (
           .sort((a, b) => new Date(a.endsAt || 0).getTime() - new Date(b.endsAt || 0).getTime())
           .slice(0, limit);
     };
+
+    const getEndingSoonSales = (limit: number) => {
+        return listings
+          .filter(l => l.type !== ListingType.TIMED_BREAK && !l.isSold)
+          .sort((a, b) => {
+              const aTime = new Date(a.endsAt || a.createdAt).getTime();
+              const bTime = new Date(b.endsAt || b.createdAt).getTime();
+              return aTime - bTime;
+          })
+          .slice(0, limit);
+    };
   
     const getRelatedListings = (listing: Listing) => {
         return listings
@@ -335,6 +346,7 @@ export const useMarketplaceStore = (
         buyNow,
         getBidsByListingId,
         getEndingSoonAuctions,
+        getEndingSoonSales,
         getRelatedListings
     };
 };
