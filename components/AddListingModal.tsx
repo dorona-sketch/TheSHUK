@@ -474,6 +474,8 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
       const price = parseFloat(formData.price);
       if (isNaN(price) || price <= 0) newErrors.price = "Enter a valid price (> 0)";
+      if (formData.type === ListingType.AUCTION && !isNaN(price) && price < 10) newErrors.price = "Opening bid should be at least $10";
+      if (formData.type === ListingType.TIMED_BREAK && !isNaN(price) && price < 25) newErrors.price = "Break entry should be at least $25";
 
       if (formData.type !== ListingType.TIMED_BREAK && !formData.condition && formData.category === ProductCategory.RAW_CARD) {
           newErrors.condition = "Condition is required";
@@ -835,11 +837,15 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                                 <label className="block text-xs font-bold text-purple-800 mb-1">Quantity <span className="text-red-500">*</span></label>
                                                 <input type="number" min="1" className="w-full border-purple-200 border p-2.5 rounded-lg text-sm focus:ring-purple-500" value={openedProduct.quantity} disabled={!!isLocked} onChange={e => setOpenedProduct({...openedProduct, quantity: Math.max(1, parseInt(e.target.value) || 1)})} required />
                                             </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-purple-800 mb-1">Break Duration (Hrs) <span className="text-red-500">*</span></label>
-                                                <div className="flex items-center gap-2">
-                                                    <input type="range" min="1" max="24" className="flex-1 accent-purple-600" value={formData.openDurationHours} onChange={e => setFormData({...formData, openDurationHours: parseInt(e.target.value)})} />
-                                                    <span className="text-xs font-bold text-purple-900 w-12 text-right">{formData.openDurationHours}h</span>
+                                            <div className="col-span-2 lg:col-span-1">
+                                                <label className="block text-xs font-bold text-purple-800 mb-1">Break Duration <span className="text-red-500">*</span></label>
+                                                <div className="rounded-lg border border-purple-200 bg-white px-3 py-2.5">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-[11px] text-purple-700 font-medium">How long entries stay open</span>
+                                                        <span className="text-sm font-extrabold text-purple-900">{formData.openDurationHours}h</span>
+                                                    </div>
+                                                    <input type="range" min="1" max="24" className="w-full accent-purple-600" value={formData.openDurationHours} onChange={e => setFormData({...formData, openDurationHours: parseInt(e.target.value)})} />
+                                                    <div className="mt-2 flex justify-between text-[10px] text-purple-500"><span>1h</span><span>12h</span><span>24h</span></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -939,7 +945,8 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                         <div className="flex flex-col justify-center gap-4">
                                             <div className="space-y-1">
                                                 <label className="block text-xs font-bold text-green-800 mb-1">Final Entry Price <span className="text-red-500">*</span></label>
-                                                <input type="number" className="w-full border-green-200 border p-2.5 rounded-lg text-sm font-bold text-green-900 focus:ring-green-500" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required min="0.01" step="0.01" />
+                                                <input type="number" className="w-full border-green-200 border p-2.5 rounded-lg text-sm font-bold text-green-900 focus:ring-green-500" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required min="25" step="1" />
+                                                <p className="text-[10px] text-green-700 mt-1">Recommended floor: $25 per spot for better break value perception.</p>
                                             </div>
                                             
                                             <div className="bg-white/60 p-3 rounded-lg border border-green-100 text-xs space-y-1">
