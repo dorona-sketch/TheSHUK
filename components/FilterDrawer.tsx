@@ -72,6 +72,7 @@ const normalizeSearchText = (value: string) => {
         'aa': 'alternate art'
     };
     Object.entries(synonymMap).forEach(([from, to]) => {
+        text = text.replace(new RegExp(`\\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g'), to);
         text = text.replace(new RegExp(`\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\b`, 'g'), to);
     });
     return text;
@@ -115,6 +116,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   const [localPriceMax, setLocalPriceMax] = useState<string>(filters.priceRange.max?.toString() || '');
 
   const [savedPresets, setSavedPresets] = useState<{ name: string; data: any }[]>([]);
+  const [presetNameInput, setPresetNameInput] = useState('');
 
   // --- Autocomplete State ---
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -529,6 +531,76 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar relative">
                 
+                <section>
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Saved Presets</h3>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                value={presetNameInput}
+                                onChange={(e) => setPresetNameInput(e.target.value)}
+                                placeholder="Preset name"
+                                className="w-28 border border-gray-300 rounded-md px-2 py-1 text-xs"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const name = presetNameInput.trim();
+                                    if (!name) return;
+                                    const data = {
+                                        searchQuery: localSearch, searchScope: localScope, sort: localSort, pokemonName: localPokemonName, boosterName: localBoosterName, descriptionQuery: localDescriptionQuery, language: localLanguage,
+                                        series: Array.from(localSeries), set: Array.from(localSet), eras: Array.from(localEras), listingTypes: Array.from(localListingTypes), pokemonTypes: Array.from(localPokemonTypes), cardCategories: Array.from(localCardCategories), variantTags: Array.from(localVariantTags),
+                                        condition: Array.from(localCondition), gradingCompany: Array.from(localGradingCompany), grades: Array.from(localGrades), sealedProductType: Array.from(localSealedProductType), breakStatus: Array.from(localBreakStatus), category: localCategory, priceMin: localPriceMin, priceMax: localPriceMax
+                                    };
+                                    const next = [...savedPresets.filter(p => p.name !== name), { name, data }];
+                                    setSavedPresets(next);
+                                    localStorage.setItem('shuk_filter_presets', JSON.stringify(next));
+                                    setPresetNameInput('');
+                                }}
+                                className="text-xs text-primary-600 font-semibold hover:underline"
+                            >
+                                Save Current
+                            </button>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {savedPresets.map(preset => (
+                            <div key={preset.name} className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-2 py-1 bg-white">
+                                <button type="button" className="text-xs font-semibold text-gray-700" onClick={() => {
+                                    const data = preset.data;
+                                    setLocalSearch(data.searchQuery || '');
+                                    setLocalScope(data.searchScope || SearchScope.ALL);
+                                    setLocalSort(data.sort || SortOption.NEWEST);
+                                    setLocalPokemonName(data.pokemonName || '');
+                                    setLocalBoosterName(data.boosterName || '');
+                                    setLocalDescriptionQuery(data.descriptionQuery || '');
+                                    setLocalLanguage(data.language || '');
+                                    setLocalSeries(new Set(data.series || []));
+                                    setLocalSet(new Set(data.set || []));
+                                    setLocalEras(new Set(data.eras || []));
+                                    setLocalListingTypes(new Set(data.listingTypes || []));
+                                    setLocalPokemonTypes(new Set(data.pokemonTypes || []));
+                                    setLocalCardCategories(new Set(data.cardCategories || []));
+                                    setLocalVariantTags(new Set(data.variantTags || []));
+                                    setLocalCondition(new Set(data.condition || []));
+                                    setLocalGradingCompany(new Set(data.gradingCompany || []));
+                                    setLocalGrades(new Set(data.grades || []));
+                                    setLocalSealedProductType(new Set(data.sealedProductType || []));
+                                    setLocalBreakStatus(new Set(data.breakStatus || []));
+                                    setLocalCategory(data.category);
+                                    setLocalPriceMin(data.priceMin || '');
+                                    setLocalPriceMax(data.priceMax || '');
+                                }}>{preset.name}</button>
+                                <button type="button" className="text-xs text-red-500" onClick={() => {
+                                    const next = savedPresets.filter(x => x.name !== preset.name);
+                                    setSavedPresets(next);
+                                    localStorage.setItem('shuk_filter_presets', JSON.stringify(next));
+                                }}>✕</button>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
                 {/* Search */}
                 <section className="relative z-20">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Search</h3>
@@ -692,6 +764,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </select>
                 </section>
 
+                {appMode === AppMode.MARKETPLACE && (
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Description Contains</h3>
                     <input
@@ -702,6 +775,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                         className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     />
                 </section>
+                )}
 
                 {appMode === AppMode.MARKETPLACE && (
                     <section>
