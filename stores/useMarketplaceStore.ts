@@ -19,7 +19,7 @@ export const useMarketplaceStore = (
 ) => {
     const [listings, setListings] = useState<Listing[]>(INITIAL_LISTINGS);
     const [bids, setBids] = useState<Bid[]>([]);
-    const [appMode, setAppMode] = useState<AppMode>(AppMode.COMBINED);
+    const [appMode, setAppMode] = useState<AppMode>(AppMode.MARKETPLACE);
     const [sortOption, setSortOption] = useState<SortOption>(SortOption.NEWEST);
     
     const [filters, setFilters] = useState<FilterState>({
