@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
-import { PokemonType, VariantTag, CardCategory, Condition, SortOption, ProductCategory, GradingCompany, SealedProductType, SearchScope, BreakStatus, AppMode, Language } from '../types';
+import { PokemonType, VariantTag, CardCategory, Condition, SortOption, ProductCategory, GradingCompany, SealedProductType, SearchScope, BreakStatus, AppMode, Language, ListingType, Listing, TcgSet } from '../types';
 import { TAG_DISPLAY_LABELS } from '../constants';
 
 interface FilterDrawerProps {
@@ -34,8 +34,52 @@ const SCOPE_LABELS: Record<SearchScope, string> = {
 
 const COMMON_GRADES = ['10', '9.5', '9', '8.5', '8', '7', '6', '5', '4', '3', '2', '1'];
 
+const ERA_ORDER = [
+    'Vintage (WOTC)',
+    'EX Era',
+    'Diamond & Pearl',
+    'Black & White',
+    'XY',
+    'Sun & Moon',
+    'Sword & Shield',
+    'Scarlet & Violet'
+] as const;
+
+const getPokemonEra = (releaseDate?: string) => {
+    const year = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : NaN;
+    if (Number.isNaN(year)) return '';
+    if (year <= 2002) return 'Vintage (WOTC)';
+    if (year <= 2006) return 'EX Era';
+    if (year <= 2010) return 'Diamond & Pearl';
+    if (year <= 2013) return 'Black & White';
+    if (year <= 2016) return 'XY';
+    if (year <= 2019) return 'Sun & Moon';
+    if (year <= 2022) return 'Sword & Shield';
+    return 'Scarlet & Violet';
+};
+
+const normalizeSearchText = (value: string) => {
+    let text = value.toLowerCase();
+    const synonymMap: Record<string, string> = {
+        'zard': 'charizard',
+        'pika': 'pikachu',
+        'nm': 'near mint',
+        'lp': 'light played',
+        'mp': 'moderately played',
+        'hp': 'heavily played',
+        '1st ed': 'first edition',
+        'fa': 'full art',
+        'aa': 'alternate art'
+    };
+    Object.entries(synonymMap).forEach(([from, to]) => {
+        text = text.replace(new RegExp(`\\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g'), to);
+    });
+    return text;
+};
+
+
 export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) => {
-  const { filters, setFilter, sortOption, setSortOption, resetFilters, getSuggestions, appMode, availableSets } = useStore();
+  const { filters, setFilter, sortOption, setSortOption, resetFilters, getSuggestions, appMode, availableSets, listings } = useStore();
 
   // --- Local State for Atomic Updates ---
   // Using Sets ensures O(1) lookup complexity for selections
@@ -46,11 +90,14 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   // Text Filters
   const [localPokemonName, setLocalPokemonName] = useState<string>(filters.pokemonName || '');
   const [localBoosterName, setLocalBoosterName] = useState<string>(filters.boosterName || '');
+  const [localDescriptionQuery, setLocalDescriptionQuery] = useState<string>(filters.descriptionQuery || '');
   const [localLanguage, setLocalLanguage] = useState<string>(filters.language || '');
   
   // Set-based Multi-Select Filters
   const [localSeries, setLocalSeries] = useState<Set<string>>(new Set(filters.series || []));
   const [localSet, setLocalSet] = useState<Set<string>>(new Set(filters.set || []));
+  const [localEras, setLocalEras] = useState<Set<string>>(new Set(filters.eras || []));
+  const [localListingTypes, setLocalListingTypes] = useState<Set<ListingType>>(new Set(filters.listingTypes || []));
 
   const [localPokemonTypes, setLocalPokemonTypes] = useState<Set<PokemonType>>(new Set(filters.pokemonTypes || []));
   const [localCardCategories, setLocalCardCategories] = useState<Set<CardCategory>>(new Set(filters.cardCategories || []));
@@ -66,6 +113,9 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   const [localBreakStatus, setLocalBreakStatus] = useState<Set<BreakStatus>>(new Set(filters.breakStatus || []));
   const [localPriceMin, setLocalPriceMin] = useState<string>(filters.priceRange.min?.toString() || '');
   const [localPriceMax, setLocalPriceMax] = useState<string>(filters.priceRange.max?.toString() || '');
+
+  const [savedPresets, setSavedPresets] = useState<{ name: string; data: any }[]>([]);
+  const [presetNameInput, setPresetNameInput] = useState('');
 
   // --- Autocomplete State ---
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -93,9 +143,12 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       
       setLocalPokemonName(filters.pokemonName || '');
       setLocalBoosterName(filters.boosterName || '');
+      setLocalDescriptionQuery(filters.descriptionQuery || '');
       setLocalLanguage(filters.language || '');
       setLocalSeries(new Set(filters.series || []));
       setLocalSet(new Set(filters.set || []));
+      setLocalEras(new Set(filters.eras || []));
+      setLocalListingTypes(new Set(filters.listingTypes || []));
 
       setLocalPokemonTypes(new Set(filters.pokemonTypes || []));
       setLocalCardCategories(new Set(filters.cardCategories || []));
@@ -180,19 +233,54 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+      try {
+          const raw = localStorage.getItem('shuk_filter_presets');
+          if (raw) setSavedPresets(JSON.parse(raw));
+      } catch (e) {
+          console.warn('Could not load presets', e);
+      }
+  }, []);
+
   // --- Derived Data ---
+  const effectiveSets = useMemo<TcgSet[]>(() => {
+      if (availableSets.length > 0) return availableSets;
+      const map = new Map<string, TcgSet>();
+      listings.forEach((l: Listing) => {
+          if (!l.setId || !l.setName) return;
+          map.set(l.setId, {
+              id: l.setId,
+              name: l.setName,
+              series: l.series || 'Unknown Series',
+              printedTotal: 0,
+              total: 0,
+              releaseDate: l.releaseDate || `${l.releaseYear || '2000'}-01-01`,
+              images: { symbol: '', logo: '' }
+          });
+      });
+      return Array.from(map.values());
+  }, [availableSets, listings]);
+
   const uniqueSeries = useMemo(() => {
-      const series = new Set(availableSets.map(s => s.series));
+      const series = new Set(effectiveSets.map(s => s.series));
       return Array.from(series).sort();
-  }, [availableSets]);
+  }, [effectiveSets]);
+
+  const eraOptions = useMemo(() => {
+      const eras = new Set(effectiveSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
+      return ERA_ORDER.filter(era => eras.has(era));
+  }, [effectiveSets]);
 
   const visibleSets = useMemo(() => {
-      let sets = availableSets;
+      let sets = effectiveSets;
+      if (localEras.size > 0) {
+          sets = sets.filter(s => localEras.has(getPokemonEra(s.releaseDate)));
+      }
       if (localSeries.size > 0) {
           sets = sets.filter(s => localSeries.has(s.series));
       }
       return sets.sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
-  }, [availableSets, localSeries]);
+  }, [effectiveSets, localSeries, localEras]);
 
   // --- Debounced Suggestions (Main Search) ---
   useEffect(() => {
@@ -293,19 +381,22 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
     
     setFilter('pokemonName', localPokemonName);
     setFilter('boosterName', localBoosterName);
+    setFilter('descriptionQuery', localDescriptionQuery);
     setFilter('language', localLanguage);
     
     // Convert Sets back to arrays for global store interface
     setFilter('series', Array.from(localSeries));
     setFilter('set', Array.from(localSet));
-    setFilter('pokemonTypes', Array.from(localPokemonTypes));
-    setFilter('cardCategories', Array.from(localCardCategories));
-    setFilter('variantTags', Array.from(localVariantTags));
-    setFilter('condition', Array.from(localCondition));
-    setFilter('gradingCompany', Array.from(localGradingCompany));
-    setFilter('grades', Array.from(localGrades));
-    setFilter('sealedProductType', Array.from(localSealedProductType));
-    setFilter('breakStatus', Array.from(localBreakStatus));
+    setFilter('eras', Array.from(localEras));
+    setFilter('listingTypes', appMode === AppMode.MARKETPLACE ? Array.from(localListingTypes) : []);
+    setFilter('pokemonTypes', appMode === AppMode.BREAKS ? [] : Array.from(localPokemonTypes));
+    setFilter('cardCategories', appMode === AppMode.BREAKS ? [] : Array.from(localCardCategories));
+    setFilter('variantTags', appMode === AppMode.BREAKS ? [] : Array.from(localVariantTags));
+    setFilter('condition', appMode === AppMode.BREAKS ? [] : Array.from(localCondition));
+    setFilter('gradingCompany', appMode === AppMode.BREAKS ? [] : Array.from(localGradingCompany));
+    setFilter('grades', appMode === AppMode.BREAKS ? [] : Array.from(localGrades));
+    setFilter('sealedProductType', appMode === AppMode.BREAKS ? [] : Array.from(localSealedProductType));
+    setFilter('breakStatus', appMode === AppMode.BREAKS ? Array.from(localBreakStatus) : []);
     
     setFilter('category', localCategory);
     
@@ -327,9 +418,12 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalSort(SortOption.NEWEST);
       setLocalPokemonName('');
       setLocalBoosterName('');
+      setLocalDescriptionQuery('');
       setLocalLanguage('');
       setLocalSeries(new Set());
       setLocalSet(new Set());
+      setLocalEras(new Set());
+      setLocalListingTypes(new Set());
       setLocalPokemonTypes(new Set());
       setLocalCardCategories(new Set());
       setLocalVariantTags(new Set());
@@ -350,10 +444,12 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
           pokeInputRef.current?.focus();
       } else {
           // Smart Fill: Check if suggestion is a Set Name
-          const matchedSet = availableSets.find(s => s.name.toLowerCase() === value.toLowerCase());
+          const matchedSet = effectiveSets.find(s => s.name.toLowerCase() === value.toLowerCase());
           if (matchedSet) {
               setLocalSet(new Set([matchedSet.id]));
               setLocalSeries(new Set([matchedSet.series]));
+              const era = getPokemonEra(matchedSet.releaseDate);
+              if (era) setLocalEras(new Set([era]));
               setLocalSearch('');
           } else {
               setLocalSearch(value);
@@ -402,7 +498,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       <div className="fixed inset-y-0 right-0 flex max-w-full pointer-events-none">
         <div 
             ref={drawerRef}
-            className="w-screen max-w-md pointer-events-auto flex flex-col bg-white shadow-2xl transform transition-transform ease-in-out duration-300 h-full"
+            className="w-screen max-w-md pointer-events-auto flex flex-col bg-white shadow-2xl transform transition-transform ease-in-out duration-300 h-full safe-area-pt safe-area-px"
         >
             {/* Header */}
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center shrink-0">
@@ -429,6 +525,76 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar relative">
                 
+                <section>
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Saved Presets</h3>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                value={presetNameInput}
+                                onChange={(e) => setPresetNameInput(e.target.value)}
+                                placeholder="Preset name"
+                                className="w-28 border border-gray-300 rounded-md px-2 py-1 text-xs"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const name = presetNameInput.trim();
+                                    if (!name) return;
+                                    const data = {
+                                        searchQuery: localSearch, searchScope: localScope, sort: localSort, pokemonName: localPokemonName, boosterName: localBoosterName, descriptionQuery: localDescriptionQuery, language: localLanguage,
+                                        series: Array.from(localSeries), set: Array.from(localSet), eras: Array.from(localEras), listingTypes: Array.from(localListingTypes), pokemonTypes: Array.from(localPokemonTypes), cardCategories: Array.from(localCardCategories), variantTags: Array.from(localVariantTags),
+                                        condition: Array.from(localCondition), gradingCompany: Array.from(localGradingCompany), grades: Array.from(localGrades), sealedProductType: Array.from(localSealedProductType), breakStatus: Array.from(localBreakStatus), category: localCategory, priceMin: localPriceMin, priceMax: localPriceMax
+                                    };
+                                    const next = [...savedPresets.filter(p => p.name !== name), { name, data }];
+                                    setSavedPresets(next);
+                                    localStorage.setItem('shuk_filter_presets', JSON.stringify(next));
+                                    setPresetNameInput('');
+                                }}
+                                className="text-xs text-primary-600 font-semibold hover:underline"
+                            >
+                                Save Current
+                            </button>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {savedPresets.map(preset => (
+                            <div key={preset.name} className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-2 py-1 bg-white">
+                                <button type="button" className="text-xs font-semibold text-gray-700" onClick={() => {
+                                    const data = preset.data;
+                                    setLocalSearch(data.searchQuery || '');
+                                    setLocalScope(data.searchScope || SearchScope.ALL);
+                                    setLocalSort(data.sort || SortOption.NEWEST);
+                                    setLocalPokemonName(data.pokemonName || '');
+                                    setLocalBoosterName(data.boosterName || '');
+                                    setLocalDescriptionQuery(data.descriptionQuery || '');
+                                    setLocalLanguage(data.language || '');
+                                    setLocalSeries(new Set(data.series || []));
+                                    setLocalSet(new Set(data.set || []));
+                                    setLocalEras(new Set(data.eras || []));
+                                    setLocalListingTypes(new Set(data.listingTypes || []));
+                                    setLocalPokemonTypes(new Set(data.pokemonTypes || []));
+                                    setLocalCardCategories(new Set(data.cardCategories || []));
+                                    setLocalVariantTags(new Set(data.variantTags || []));
+                                    setLocalCondition(new Set(data.condition || []));
+                                    setLocalGradingCompany(new Set(data.gradingCompany || []));
+                                    setLocalGrades(new Set(data.grades || []));
+                                    setLocalSealedProductType(new Set(data.sealedProductType || []));
+                                    setLocalBreakStatus(new Set(data.breakStatus || []));
+                                    setLocalCategory(data.category);
+                                    setLocalPriceMin(data.priceMin || '');
+                                    setLocalPriceMax(data.priceMax || '');
+                                }}>{preset.name}</button>
+                                <button type="button" className="text-xs text-red-500" onClick={() => {
+                                    const next = savedPresets.filter(x => x.name !== preset.name);
+                                    setSavedPresets(next);
+                                    localStorage.setItem('shuk_filter_presets', JSON.stringify(next));
+                                }}>✕</button>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
                 {/* Search */}
                 <section className="relative z-20">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Search</h3>
@@ -592,6 +758,43 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </select>
                 </section>
 
+                {appMode === AppMode.MARKETPLACE && (
+                <section>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Description Contains</h3>
+                    <input
+                        type="text"
+                        value={localDescriptionQuery}
+                        onChange={(e) => setLocalDescriptionQuery(e.target.value)}
+                        placeholder="e.g. near mint, swirl, first edition"
+                        className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                </section>
+                )}
+
+                {appMode === AppMode.MARKETPLACE && (
+                    <section>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Listing Mode</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            {[ListingType.DIRECT_SALE, ListingType.AUCTION].map(t => {
+                                const count = listings.filter(l => l.type === t).length;
+                                const selected = localListingTypes.has(t);
+                                return (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => toggleFilter(t, setLocalListingTypes)}
+                                        className={`px-3 py-2 rounded-lg text-xs font-bold border ${selected ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                                    >
+                                        {t === ListingType.AUCTION ? 'Auction' : 'Buy Now'} ({count})
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </section>
+                )}
+
+                {appMode === AppMode.MARKETPLACE && (
+                <>
                 {/* Product Category */}
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Product Category</h3>
@@ -619,14 +822,16 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                         ))}
                     </div>
                 </section>
+                </>
+                )}
 
                 {/* Series & Set */}
                 <section>
                     <div className="flex justify-between items-end mb-3">
                         <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Series & Set</h3>
-                        {(localSeries.size > 0 || localSet.size > 0) && (
+                        {(localSeries.size > 0 || localSet.size > 0 || localEras.size > 0) && (
                             <button 
-                                onClick={() => { setLocalSeries(new Set()); setLocalSet(new Set()); }}
+                                onClick={() => { setLocalSeries(new Set()); setLocalSet(new Set()); setLocalEras(new Set()); }}
                                 className="text-[10px] text-red-600 hover:underline"
                             >
                                 Reset Selection
@@ -635,7 +840,27 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </div>
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-2">Era / Series</label>
+                            <label className="block text-xs font-medium text-gray-500 mb-2">Era</label>
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                {eraOptions.map(era => {
+                                    const isSelected = localEras.has(era);
+                                    const eraCount = listings.filter(l => getPokemonEra(l.releaseDate || `${l.releaseYear || ''}-01-01`) === era).length;
+                                    return (
+                                        <button
+                                            key={era}
+                                            onClick={() => toggleFilter(era, setLocalEras)}
+                                            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                                                isSelected
+                                                ? 'bg-fuchsia-600 text-white border-fuchsia-600 shadow-md'
+                                                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {era} ({eraCount})
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <label className="block text-xs font-medium text-gray-500 mb-2">Series</label>
                             <div className="flex flex-wrap gap-2">
                                 {uniqueSeries.map(series => {
                                     const isSelected = localSeries.has(series);
@@ -668,6 +893,10 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                                 if (!localSeries.has(set.series)) {
                                                     setLocalSeries(prev => new Set(prev).add(set.series));
                                                 }
+                                                const era = getPokemonEra(set.releaseDate);
+                                                if (era && !localEras.has(era)) {
+                                                    setLocalEras(prev => new Set(prev).add(era));
+                                                }
                                             }}
                                             className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
                                         />
@@ -675,6 +904,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                             <div className="text-xs font-bold text-gray-700 truncate">{set.name}</div>
                                             <div className="text-[10px] text-gray-400 flex justify-between">
                                                 <span>{set.series}</span>
+                                                <span>{getPokemonEra(set.releaseDate)}</span>
                                                 <span>{set.total} cards</span>
                                             </div>
                                         </div>
@@ -685,6 +915,8 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </div>
                 </section>
 
+                {appMode !== AppMode.BREAKS && (
+                <>
                 {/* Pokemon Types */}
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Pokemon Type</h3>
@@ -841,6 +1073,31 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 </label>
                             ))}
                          </div>
+                    </section>
+                )}
+
+                                </>
+                )}
+
+                {appMode === AppMode.BREAKS && (
+                    <section>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Break Status</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {Object.values(BreakStatus).map(status => {
+                                const selected = localBreakStatus.has(status);
+                                const count = listings.filter(l => l.breakStatus === status).length;
+                                return (
+                                    <button
+                                        type="button"
+                                        key={status}
+                                        onClick={() => toggleFilter(status, setLocalBreakStatus)}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-bold border ${selected ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                                    >
+                                        {status} ({count})
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </section>
                 )}
 
