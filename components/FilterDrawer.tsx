@@ -46,6 +46,39 @@ const ERA_ORDER = [
     'Scarlet & Violet'
 ] as const;
 
+const getPokemonEra = (releaseDate?: string) => {
+    const year = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : NaN;
+    if (Number.isNaN(year)) return '';
+    if (year <= 2002) return 'Vintage (WOTC)';
+    if (year <= 2006) return 'EX Era';
+    if (year <= 2010) return 'Diamond & Pearl';
+    if (year <= 2013) return 'Black & White';
+    if (year <= 2016) return 'XY';
+    if (year <= 2019) return 'Sun & Moon';
+    if (year <= 2022) return 'Sword & Shield';
+    return 'Scarlet & Violet';
+};
+
+const normalizeSearchText = (value: string) => {
+    let text = value.toLowerCase();
+    const synonymMap: Record<string, string> = {
+        'zard': 'charizard',
+        'pika': 'pikachu',
+        'nm': 'near mint',
+        'lp': 'light played',
+        'mp': 'moderately played',
+        'hp': 'heavily played',
+        '1st ed': 'first edition',
+        'fa': 'full art',
+        'aa': 'alternate art'
+    };
+    Object.entries(synonymMap).forEach(([from, to]) => {
+        text = text.replace(new RegExp(`\\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g'), to);
+        text = text.replace(new RegExp(`\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\b`, 'g'), to);
+    });
+    return text;
+};
+
 
 export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) => {
   const { filters, setFilter, sortOption, setSortOption, resetFilters, getSuggestions, appMode, availableSets, listings } = useStore();
@@ -235,10 +268,15 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       return Array.from(series).sort();
   }, [effectiveSets]);
 
-  const derivedEraOptions = useMemo(() => {
+  const uniqueEras = useMemo(() => {
       const eras = new Set(effectiveSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
       return ERA_ORDER.filter(era => eras.has(era));
   }, [effectiveSets]);
+
+  const uniqueEras = useMemo(() => {
+      const eras = new Set(availableSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
+      return ERA_ORDER.filter(era => eras.has(era));
+  }, [availableSets]);
 
   const visibleSets = useMemo(() => {
       let sets = effectiveSets;
@@ -811,7 +849,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                         <div>
                             <label className="block text-xs font-medium text-gray-500 mb-2">Era</label>
                             <div className="flex flex-wrap gap-2 mb-3">
-                                {derivedEraOptions.map(era => {
+                                {uniqueEras.map(era => {
                                     const isSelected = localEras.has(era);
                                     const eraCount = listings.filter(l => getPokemonEra(l.releaseDate || `${l.releaseYear || ''}-01-01`) === era).length;
                                     return (
