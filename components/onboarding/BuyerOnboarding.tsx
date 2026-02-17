@@ -39,7 +39,7 @@ export const BuyerOnboarding: React.FC<BuyerOnboardingProps> = ({ onComplete, on
             <div className="w-24 h-24 bg-primary-100 rounded-full flex items-center justify-center mx-auto text-4xl mb-4">
                 👋
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">Welcome to PokeVault!</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Welcome to Break-Hit!</h2>
             <p className="text-gray-600">Let's personalize your feed. What are you hunting for?</p>
             
             <div className="flex flex-wrap gap-3 justify-center">

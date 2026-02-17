@@ -33,7 +33,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, onSwitchToRegis
         <div className="max-w-md w-full mx-auto bg-white p-8 rounded-xl shadow-md border border-gray-100">
             <div className="text-center mb-6">
                 <h2 className="text-2xl font-bold text-gray-900">Welcome Back</h2>
-                <p className="text-sm text-gray-500 mt-1">Sign in to your PokeVault account</p>
+                <p className="text-sm text-gray-500 mt-1">Sign in to your Break-Hit account</p>
                 <div className="mt-2 text-xs bg-blue-50 text-blue-700 p-2 rounded">
                     Demo credentials: <strong>ash@pallet.town</strong> / <strong>password123</strong>
                 </div>

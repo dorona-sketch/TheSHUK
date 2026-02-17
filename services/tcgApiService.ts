@@ -4,11 +4,9 @@
 import { getEnv } from '../utils/env';
 
 const API_BASE_URL = 'https://api.pokemontcg.io/v2';
-const API_KEY = '2ee47417-4429-4108-b170-60f468fd4d49'; // Public key
+const API_KEY = getEnv('API_KEY') || '';
 
-const HEADERS = {
-  'X-Api-Key': getEnv('API_KEY') || API_KEY
-};
+const HEADERS = API_KEY ? { 'X-Api-Key': API_KEY } : undefined;
 
 // Simple In-Memory Cache
 const CACHE: Record<string, { data: any, timestamp: number }> = {};
@@ -26,7 +24,7 @@ const VARIANT_MAP: Record<string, string> = {
 
 const safeFetch = async (url: string) => {
     try {
-        const response = await fetch(url, { headers: HEADERS });
+        const response = await fetch(url, HEADERS ? { headers: HEADERS } : undefined);
         if (!response.ok) {
             console.warn(`TCG API Request failed: ${response.status} ${response.statusText}`);
             return null;

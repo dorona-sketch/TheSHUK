@@ -1,7 +1,7 @@
 import { Conversation, Message, Listing, User, MessageStatus, MessageType } from '../types';
 
-const CONV_KEY = 'pokevault_conversations';
-const MSG_KEY = 'pokevault_messages';
+const CONV_KEY = 'break-hit_conversations';
+const MSG_KEY = 'break-hit_messages';
 
 // Typed callback for simulating real-time typing events
 type TypingCallback = (conversationId: string, isTyping: boolean) => void;

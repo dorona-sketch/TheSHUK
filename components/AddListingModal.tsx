@@ -474,6 +474,8 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
       const price = parseFloat(formData.price);
       if (isNaN(price) || price <= 0) newErrors.price = "Enter a valid price (> 0)";
+      if (formData.type === ListingType.AUCTION && !isNaN(price) && price < 25) newErrors.price = "Opening bid should be at least $25";
+      if (formData.type === ListingType.TIMED_BREAK && !isNaN(price) && price < 50) newErrors.price = "Break entry should be at least $50";
 
       if (formData.type !== ListingType.TIMED_BREAK && !formData.condition && formData.category === ProductCategory.RAW_CARD) {
           newErrors.condition = "Condition is required";
@@ -537,10 +539,10 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
         />
     )}
     
-    <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+    <div className="fixed inset-0 z-50 overflow-y-auto safe-area-pt safe-area-px" role="dialog">
+      <div className="flex items-start justify-center min-h-screen px-4 pt-3 pb-20 text-center sm:block sm:p-0">
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 backdrop-blur-sm" onClick={onClose}></div>
-        <div className="relative inline-block bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-4xl sm:w-full p-6 animate-fade-in-up min-h-[600px] flex flex-col">
+        <div className="relative inline-block bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all mt-2 sm:my-8 sm:max-w-4xl sm:w-full p-6 animate-fade-in-up min-h-[600px] flex flex-col">
             <h3 className="text-xl font-bold mb-6 text-gray-900">{initialData ? 'Edit Listing' : 'Create New Listing'}</h3>
             
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
@@ -564,7 +566,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                         <h4 className="text-lg font-bold text-gray-900 mb-1">Upload Card Photo</h4>
                         <p className="text-sm text-gray-500 mb-4 text-center max-w-xs">We'll automatically crop and perspective-correct your card image.</p>
                         <button type="button" className="px-6 py-2 bg-gray-900 text-white font-bold rounded-full text-sm">Select Image</button>
-                        <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                        <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
                     </div>
                 )}
 
@@ -649,7 +651,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                             )}
                                         </div>
                                     </div>
-                                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
                                     <div className="text-xs text-gray-400 text-center">
                                         Click image to replace.
                                     </div>
@@ -809,11 +811,11 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                                         <span className="text-xs text-purple-400 font-medium">Add Photo</span>
                                                     </>
                                                 )}
-                                                <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} required />
+                                                <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} required />
                                             </div>
                                         </div>
 
-                                        <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                                        <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-xs font-bold text-purple-800 mb-1">Product Type <span className="text-red-500">*</span></label>
                                                 <select className="w-full border-purple-200 border p-2.5 rounded-lg text-sm focus:ring-purple-500" value={openedProduct.type} disabled={!!isLocked} onChange={e => setOpenedProduct({...openedProduct, type: e.target.value as any})} required>
@@ -835,11 +837,15 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                                 <label className="block text-xs font-bold text-purple-800 mb-1">Quantity <span className="text-red-500">*</span></label>
                                                 <input type="number" min="1" className="w-full border-purple-200 border p-2.5 rounded-lg text-sm focus:ring-purple-500" value={openedProduct.quantity} disabled={!!isLocked} onChange={e => setOpenedProduct({...openedProduct, quantity: Math.max(1, parseInt(e.target.value) || 1)})} required />
                                             </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-purple-800 mb-1">Break Duration (Hrs) <span className="text-red-500">*</span></label>
-                                                <div className="flex items-center gap-2">
-                                                    <input type="range" min="1" max="24" className="flex-1 accent-purple-600" value={formData.openDurationHours} onChange={e => setFormData({...formData, openDurationHours: parseInt(e.target.value)})} />
-                                                    <span className="text-xs font-bold text-purple-900 w-12 text-right">{formData.openDurationHours}h</span>
+                                            <div className="col-span-2 lg:col-span-1">
+                                                <label className="block text-xs font-bold text-purple-800 mb-1">Break Duration <span className="text-red-500">*</span></label>
+                                                <div className="rounded-lg border border-purple-200 bg-white px-3 py-2.5">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-[11px] text-purple-700 font-medium">How long entries stay open</span>
+                                                        <span className="text-sm font-extrabold text-purple-900">{formData.openDurationHours}h</span>
+                                                    </div>
+                                                    <input type="range" min="1" max="24" className="w-full accent-purple-600" value={formData.openDurationHours} onChange={e => setFormData({...formData, openDurationHours: parseInt(e.target.value)})} />
+                                                    <div className="mt-2 flex justify-between text-[10px] text-purple-500"><span>1h</span><span>12h</span><span>24h</span></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -882,7 +888,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                             <div className="flex flex-col sm:flex-row gap-3">
                                                 <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-white transition-colors shrink-0 bg-white overflow-hidden relative" onClick={() => prizeInputRef.current?.click()}>
                                                     {newPrizeImage ? <img src={newPrizeImage} className="w-full h-full object-cover" /> : <span className="text-xs text-gray-400 text-center">+Img</span>}
-                                                    <input ref={prizeInputRef} type="file" className="hidden" accept="image/*" onChange={handlePrizeFile} />
+                                                    <input ref={prizeInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePrizeFile} />
                                                 </div>
                                                 <div className="flex-1 space-y-2">
                                                     <div className="flex gap-2">
@@ -939,7 +945,12 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                         <div className="flex flex-col justify-center gap-4">
                                             <div className="space-y-1">
                                                 <label className="block text-xs font-bold text-green-800 mb-1">Final Entry Price <span className="text-red-500">*</span></label>
-                                                <input type="number" className="w-full border-green-200 border p-2.5 rounded-lg text-sm font-bold text-green-900 focus:ring-green-500" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required min="0.01" step="0.01" />
+                                                <input type="number" className="w-full border-green-200 border p-2.5 rounded-lg text-sm font-bold text-green-900 focus:ring-green-500" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required min="50" step="1" />
+                                                <p className="text-[10px] text-green-700 mt-1">Recommended floor: $50 per spot for better break value perception.</p>
+                                                <div className="mt-2 flex items-center justify-between bg-white/70 border border-green-200 rounded px-2 py-1">
+                                                    <span className="text-[10px] text-green-800">Suggested by valuation:</span>
+                                                    <button type="button" onClick={() => setFormData({...formData, price: Math.max(50, Math.round(valuation.suggestedEntryPrice || 0)).toString()})} className="text-[10px] font-bold text-green-700 hover:text-green-900">Use ${Math.max(50, Math.round(valuation.suggestedEntryPrice || 0))}</button>
+                                                </div>
                                             </div>
                                             
                                             <div className="bg-white/60 p-3 rounded-lg border border-green-100 text-xs space-y-1">
