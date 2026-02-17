@@ -525,7 +525,10 @@ export interface FilterState {
   language?: string;
   series: string[];
   set: string[];
+  eras: string[];
+  listingTypes: ListingType[];
   boosterName?: string;
+  descriptionQuery?: string;
   category?: ProductCategory;
 }
 
