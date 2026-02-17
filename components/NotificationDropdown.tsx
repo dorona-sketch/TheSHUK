@@ -28,7 +28,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ onCl
     };
 
     return (
-        <div className="absolute right-0 md:right-0 mt-2 w-[min(92vw,22rem)] md:w-80 bg-breakhit-surface border border-breakhit-border rounded-xl shadow-2xl py-1 z-50 animate-fade-in-up">
+        <div className="fixed top-[calc(env(safe-area-inset-top)+56px)] left-3 right-3 md:absolute md:top-auto md:left-auto md:right-0 md:mt-2 md:w-80 bg-breakhit-surface border border-breakhit-border rounded-xl shadow-2xl py-1 z-[70] animate-fade-in-up">
             <div className="px-4 py-3 border-b border-breakhit-border flex justify-between items-center bg-breakhit-surfaceHigh rounded-t-xl">
                 <h3 className="font-bold text-breakhit-silver text-sm">Notifications</h3>
                 {notifications.some(n => !n.isRead) && (
@@ -38,7 +38,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({ onCl
                 )}
             </div>
 
-            <div className="max-h-80 overflow-y-auto custom-scrollbar">
+            <div className="max-h-[55vh] md:max-h-80 overflow-y-auto custom-scrollbar">
                 {notifications.length === 0 ? (
                     <div className="p-8 text-center text-breakhit-muted text-sm">
                         No notifications yet.

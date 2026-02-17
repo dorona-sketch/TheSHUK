@@ -474,8 +474,8 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
       const price = parseFloat(formData.price);
       if (isNaN(price) || price <= 0) newErrors.price = "Enter a valid price (> 0)";
-      if (formData.type === ListingType.AUCTION && !isNaN(price) && price < 10) newErrors.price = "Opening bid should be at least $10";
-      if (formData.type === ListingType.TIMED_BREAK && !isNaN(price) && price < 25) newErrors.price = "Break entry should be at least $25";
+      if (formData.type === ListingType.AUCTION && !isNaN(price) && price < 25) newErrors.price = "Opening bid should be at least $25";
+      if (formData.type === ListingType.TIMED_BREAK && !isNaN(price) && price < 50) newErrors.price = "Break entry should be at least $50";
 
       if (formData.type !== ListingType.TIMED_BREAK && !formData.condition && formData.category === ProductCategory.RAW_CARD) {
           newErrors.condition = "Condition is required";
@@ -815,7 +815,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                             </div>
                                         </div>
 
-                                        <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                                        <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-xs font-bold text-purple-800 mb-1">Product Type <span className="text-red-500">*</span></label>
                                                 <select className="w-full border-purple-200 border p-2.5 rounded-lg text-sm focus:ring-purple-500" value={openedProduct.type} disabled={!!isLocked} onChange={e => setOpenedProduct({...openedProduct, type: e.target.value as any})} required>
@@ -945,8 +945,12 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                         <div className="flex flex-col justify-center gap-4">
                                             <div className="space-y-1">
                                                 <label className="block text-xs font-bold text-green-800 mb-1">Final Entry Price <span className="text-red-500">*</span></label>
-                                                <input type="number" className="w-full border-green-200 border p-2.5 rounded-lg text-sm font-bold text-green-900 focus:ring-green-500" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required min="25" step="1" />
-                                                <p className="text-[10px] text-green-700 mt-1">Recommended floor: $25 per spot for better break value perception.</p>
+                                                <input type="number" className="w-full border-green-200 border p-2.5 rounded-lg text-sm font-bold text-green-900 focus:ring-green-500" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required min="50" step="1" />
+                                                <p className="text-[10px] text-green-700 mt-1">Recommended floor: $50 per spot for better break value perception.</p>
+                                                <div className="mt-2 flex items-center justify-between bg-white/70 border border-green-200 rounded px-2 py-1">
+                                                    <span className="text-[10px] text-green-800">Suggested by valuation:</span>
+                                                    <button type="button" onClick={() => setFormData({...formData, price: Math.max(50, Math.round(valuation.suggestedEntryPrice || 0)).toString()})} className="text-[10px] font-bold text-green-700 hover:text-green-900">Use ${Math.max(50, Math.round(valuation.suggestedEntryPrice || 0))}</button>
+                                                </div>
                                             </div>
                                             
                                             <div className="bg-white/60 p-3 rounded-lg border border-green-100 text-xs space-y-1">
