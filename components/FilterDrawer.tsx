@@ -268,10 +268,10 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       return Array.from(series).sort();
   }, [effectiveSets]);
 
-  const uniqueEras = useMemo(() => {
-      const eras = new Set(availableSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
+  const derivedEraOptions = useMemo(() => {
+      const eras = new Set(effectiveSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
       return ERA_ORDER.filter(era => eras.has(era));
-  }, [availableSets]);
+  }, [effectiveSets]);
 
   const visibleSets = useMemo(() => {
       let sets = effectiveSets;
@@ -844,7 +844,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                         <div>
                             <label className="block text-xs font-medium text-gray-500 mb-2">Era</label>
                             <div className="flex flex-wrap gap-2 mb-3">
-                                {uniqueEras.map(era => {
+                                {derivedEraOptions.map(era => {
                                     const isSelected = localEras.has(era);
                                     const eraCount = listings.filter(l => getPokemonEra(l.releaseDate || `${l.releaseYear || ''}-01-01`) === era).length;
                                     return (

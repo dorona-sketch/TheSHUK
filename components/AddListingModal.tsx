@@ -537,10 +537,10 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
         />
     )}
     
-    <div className="fixed inset-0 z-50 overflow-y-auto" role="dialog">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+    <div className="fixed inset-0 z-50 overflow-y-auto safe-area-pt safe-area-px" role="dialog">
+      <div className="flex items-start justify-center min-h-screen px-4 pt-3 pb-20 text-center sm:block sm:p-0">
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 backdrop-blur-sm" onClick={onClose}></div>
-        <div className="relative inline-block bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-4xl sm:w-full p-6 animate-fade-in-up min-h-[600px] flex flex-col">
+        <div className="relative inline-block bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all mt-2 sm:my-8 sm:max-w-4xl sm:w-full p-6 animate-fade-in-up min-h-[600px] flex flex-col">
             <h3 className="text-xl font-bold mb-6 text-gray-900">{initialData ? 'Edit Listing' : 'Create New Listing'}</h3>
             
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
