@@ -34,6 +34,7 @@ const normalizeSearchText = (value: string) => {
     };
     Object.entries(synonymMap).forEach(([from, to]) => {
         text = text.replace(new RegExp(`\\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g'), to);
+        text = text.replace(new RegExp(`\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\b`, 'g'), to);
     });
     return text;
 };
