@@ -564,7 +564,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                         <h4 className="text-lg font-bold text-gray-900 mb-1">Upload Card Photo</h4>
                         <p className="text-sm text-gray-500 mb-4 text-center max-w-xs">We'll automatically crop and perspective-correct your card image.</p>
                         <button type="button" className="px-6 py-2 bg-gray-900 text-white font-bold rounded-full text-sm">Select Image</button>
-                        <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                        <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
                     </div>
                 )}
 
@@ -649,7 +649,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                             )}
                                         </div>
                                     </div>
-                                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
                                     <div className="text-xs text-gray-400 text-center">
                                         Click image to replace.
                                     </div>
@@ -809,7 +809,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                                         <span className="text-xs text-purple-400 font-medium">Add Photo</span>
                                                     </>
                                                 )}
-                                                <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} required />
+                                                <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} required />
                                             </div>
                                         </div>
 
@@ -882,7 +882,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                             <div className="flex flex-col sm:flex-row gap-3">
                                                 <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-white transition-colors shrink-0 bg-white overflow-hidden relative" onClick={() => prizeInputRef.current?.click()}>
                                                     {newPrizeImage ? <img src={newPrizeImage} className="w-full h-full object-cover" /> : <span className="text-xs text-gray-400 text-center">+Img</span>}
-                                                    <input ref={prizeInputRef} type="file" className="hidden" accept="image/*" onChange={handlePrizeFile} />
+                                                    <input ref={prizeInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePrizeFile} />
                                                 </div>
                                                 <div className="flex-1 space-y-2">
                                                     <div className="flex gap-2">

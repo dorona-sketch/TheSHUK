@@ -50,22 +50,22 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
   }, []);
 
   return (
-    <nav className="sticky top-0 z-50 bg-shuk-dark/90 backdrop-blur-md border-b border-shuk-border shadow-lg" role="navigation" aria-label="Main Navigation">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex items-center gap-6">
+    <nav className="sticky top-0 z-50 safe-area-pt safe-area-px bg-shuk-dark/90 backdrop-blur-md border-b border-shuk-border shadow-lg" role="navigation" aria-label="Main Navigation">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-14 md:h-16">
+          <div className="flex items-center gap-3 md:gap-6 min-w-0">
             <div 
-                className="flex-shrink-0 flex items-center gap-3 cursor-pointer group"
+                className="flex-shrink-0 min-w-0 flex items-center gap-2 md:gap-3 cursor-pointer group"
                 onClick={handleLogoClick}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => e.key === 'Enter' && handleLogoClick()}
                 aria-label="Go to Home"
             >
-              <ShukLogo className="h-8 w-8 text-shuk-primary group-hover:drop-shadow-[0_0_5px_rgba(34,211,238,0.5)] transition-all" />
-              <div className="flex flex-col">
-                <span className="font-display font-bold text-xl text-shuk-silver tracking-tight group-hover:text-white transition-colors">THE DIGITAL SHUK</span>
-                <span className="text-[9px] text-shuk-primary tracking-[0.2em] font-medium leading-none">COLLECTIBLES</span>
+              <ShukLogo className="h-7 w-7 md:h-8 md:w-8 text-shuk-primary group-hover:drop-shadow-[0_0_5px_rgba(34,211,238,0.5)] transition-all" />
+              <div className="min-w-0 flex flex-col">
+                <span className="font-display font-bold text-sm sm:text-lg md:text-xl leading-tight text-shuk-silver tracking-tight group-hover:text-white transition-colors truncate">THE DIGITAL SHUK</span>
+                <span className="hidden sm:block text-[9px] text-shuk-primary tracking-[0.2em] font-medium leading-none">COLLECTIBLES</span>
               </div>
             </div>
 
@@ -107,7 +107,7 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-3 md:gap-4">
             <button 
                 onClick={() => onNavigate('COMMUNITY')}
                 className="hidden md:flex items-center gap-1.5 text-sm font-bold text-shuk-muted hover:text-shuk-primary transition-colors focus:outline-none focus:text-shuk-primary"
@@ -183,16 +183,16 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
                     </div>
                 </>
             ) : (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                     <button 
                         onClick={() => onNavigate('LOGIN')}
-                        className="text-shuk-muted hover:text-shuk-silver font-medium text-sm"
+                        className="text-shuk-muted hover:text-shuk-silver font-medium text-xs sm:text-sm px-1"
                     >
                         Sign In
                     </button>
                     <button 
                         onClick={() => onNavigate('REGISTER')}
-                        className="bg-shuk-primary text-shuk-dark px-4 py-2 rounded-md font-bold text-sm transition-colors shadow-[0_0_10px_rgba(34,211,238,0.2)] hover:shadow-[0_0_15px_rgba(34,211,238,0.4)]"
+                        className="bg-shuk-primary text-shuk-dark px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-md font-bold text-xs sm:text-sm transition-colors shadow-[0_0_10px_rgba(34,211,238,0.2)] hover:shadow-[0_0_15px_rgba(34,211,238,0.4)]"
                     >
                         Join
                     </button>
@@ -202,12 +202,12 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
         </div>
         
         {/* Mobile Mode Switcher */}
-        <div className="md:hidden py-2 border-t border-shuk-border flex justify-between px-4 items-center bg-shuk-dark">
+        <div className="md:hidden py-2 border-t border-shuk-border flex justify-between gap-3 px-1 items-center bg-shuk-dark">
             <button onClick={handleModeToggle} className="text-xs text-shuk-muted font-medium flex items-center gap-1 focus:outline-none">
                 View: <span className="text-shuk-primary font-bold">{getModeLabel()}</span>
                 <svg className="w-3 h-3 text-shuk-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             </button>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5 sm:gap-3 md:gap-4">
                 <button 
                     onClick={onSell}
                     className="text-xs font-bold text-shuk-silver flex items-center gap-1 focus:outline-none active:text-shuk-primary"

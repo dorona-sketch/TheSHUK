@@ -30,6 +30,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
     const [coverPreview, setCoverPreview] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [uploadingType, setUploadingType] = useState<'avatar' | 'cover' | null>(null);
+    const [isLocating, setIsLocating] = useState(false);
 
     const avatarInputRef = useRef<HTMLInputElement>(null);
     const coverInputRef = useRef<HTMLInputElement>(null);
@@ -95,6 +96,29 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
         onClose();
     };
 
+    const handleUseCurrentLocation = () => {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported on this device/browser.');
+            return;
+        }
+
+        setIsLocating(true);
+        navigator.geolocation.getCurrentPosition(
+            ({ coords }) => {
+                const lat = coords.latitude.toFixed(5);
+                const lng = coords.longitude.toFixed(5);
+                setLocation(`${lat}, ${lng}`);
+                setIsLocating(false);
+            },
+            (error) => {
+                console.error('Location lookup failed', error);
+                alert('Unable to get your location. Check location permissions and try again.');
+                setIsLocating(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+        );
+    };
+
     const currentAvatar = avatarPreview || user.avatarUrl || user.avatar || `https://ui-avatars.com/api/?name=${user.name}`;
     const currentCover = coverPreview || user.coverImageUrl || user.coverImage;
 
@@ -126,7 +150,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                                     {uploadingType === 'cover' ? 'Processing...' : 'Change Cover'}
                                 </button>
                             </div>
-                            <input ref={coverInputRef} type="file" className="hidden" accept="image/*" onChange={e => handleImageSelect(e, 'cover')} />
+                            <input ref={coverInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={e => handleImageSelect(e, 'cover')} />
                         </div>
 
                         {/* Avatar Preview & Edit */}
@@ -136,7 +160,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                                 <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                     <span className="text-white text-xs font-bold">Edit</span>
                                 </div>
-                                <input ref={avatarInputRef} type="file" className="hidden" accept="image/*" onChange={e => handleImageSelect(e, 'avatar')} />
+                                <input ref={avatarInputRef} type="file" className="hidden" accept="image/*" capture="user" onChange={e => handleImageSelect(e, 'avatar')} />
                             </div>
                             <div className="text-xs text-gray-500">
                                 <p>Tap image to change.</p>
@@ -159,12 +183,22 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                         
                         <div>
                             <label className="block text-xs font-bold text-gray-700 mb-1">Location</label>
-                            <input 
-                                value={location} 
-                                onChange={e => setLocation(e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-primary-500 focus:border-primary-500"
-                                placeholder="e.g. Tokyo, JP"
-                            />
+                            <div className="flex gap-2">
+                                <input 
+                                    value={location} 
+                                    onChange={e => setLocation(e.target.value)}
+                                    className="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-primary-500 focus:border-primary-500"
+                                    placeholder="e.g. Tokyo, JP"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleUseCurrentLocation}
+                                    disabled={isLocating}
+                                    className="shrink-0 px-3 py-2.5 text-xs font-bold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                                >
+                                    {isLocating ? 'Locating...' : 'Use GPS'}
+                                </button>
+                            </div>
                         </div>
 
                         <div>
