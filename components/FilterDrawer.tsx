@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useStore } from '../context/StoreContext';
 import { PokemonType, VariantTag, CardCategory, Condition, SortOption, ProductCategory, GradingCompany, SealedProductType, SearchScope, BreakStatus, AppMode, Language, ListingType, Listing, TcgSet } from '../types';
 import { TAG_DISPLAY_LABELS } from '../constants';
+import { getPokemonEra, normalizeSearchText } from '../utils/filterUtils';
 
 interface FilterDrawerProps {
   isOpen: boolean;
@@ -44,38 +45,6 @@ const ERA_ORDER = [
     'Sword & Shield',
     'Scarlet & Violet'
 ] as const;
-
-const getPokemonEra = (releaseDate?: string) => {
-    const year = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : NaN;
-    if (Number.isNaN(year)) return '';
-    if (year <= 2002) return 'Vintage (WOTC)';
-    if (year <= 2006) return 'EX Era';
-    if (year <= 2010) return 'Diamond & Pearl';
-    if (year <= 2013) return 'Black & White';
-    if (year <= 2016) return 'XY';
-    if (year <= 2019) return 'Sun & Moon';
-    if (year <= 2022) return 'Sword & Shield';
-    return 'Scarlet & Violet';
-};
-
-const normalizeSearchText = (value: string) => {
-    let text = value.toLowerCase();
-    const synonymMap: Record<string, string> = {
-        'zard': 'charizard',
-        'pika': 'pikachu',
-        'nm': 'near mint',
-        'lp': 'light played',
-        'mp': 'moderately played',
-        'hp': 'heavily played',
-        '1st ed': 'first edition',
-        'fa': 'full art',
-        'aa': 'alternate art'
-    };
-    Object.entries(synonymMap).forEach(([from, to]) => {
-        text = text.replace(new RegExp(`\\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g'), to);
-    });
-    return text;
-};
 
 
 export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) => {
