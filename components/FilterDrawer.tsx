@@ -270,6 +270,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       return ERA_ORDER.filter(era => eras.has(era));
   }, [effectiveSets]);
 
+  const uniqueEras = useMemo(() => {
+      const eras = new Set(availableSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
+      return ERA_ORDER.filter(era => eras.has(era));
+  }, [availableSets]);
+
   const visibleSets = useMemo(() => {
       let sets = effectiveSets;
       if (localEras.size > 0) {
