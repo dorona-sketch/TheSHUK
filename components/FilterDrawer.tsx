@@ -204,7 +204,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
 
   useEffect(() => {
       try {
-          const raw = localStorage.getItem('shuk_filter_presets');
+          const raw = localStorage.getItem('breakhit_filter_presets');
           if (raw) setSavedPresets(JSON.parse(raw));
       } catch (e) {
           console.warn('Could not load presets', e);
@@ -517,7 +517,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                     };
                                     const next = [...savedPresets.filter(p => p.name !== name), { name, data }];
                                     setSavedPresets(next);
-                                    localStorage.setItem('shuk_filter_presets', JSON.stringify(next));
+                                    localStorage.setItem('breakhit_filter_presets', JSON.stringify(next));
                                     setPresetNameInput('');
                                 }}
                                 className="text-xs text-primary-600 font-semibold hover:underline"
@@ -557,7 +557,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 <button type="button" className="text-xs text-red-500" onClick={() => {
                                     const next = savedPresets.filter(x => x.name !== preset.name);
                                     setSavedPresets(next);
-                                    localStorage.setItem('shuk_filter_presets', JSON.stringify(next));
+                                    localStorage.setItem('breakhit_filter_presets', JSON.stringify(next));
                                 }}>✕</button>
                             </div>
                         ))}

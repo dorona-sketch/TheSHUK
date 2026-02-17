@@ -308,10 +308,10 @@ export const useMarketplaceStore = (
 
     const getEndingSoonSales = (limit: number) => {
         return listings
-          .filter(l => l.type !== ListingType.TIMED_BREAK && !l.isSold)
+          .filter(l => l.type !== ListingType.TIMED_BREAK && !l.isSold && !!l.endsAt)
           .sort((a, b) => {
-              const aTime = new Date(a.endsAt || a.createdAt).getTime();
-              const bTime = new Date(b.endsAt || b.createdAt).getTime();
+              const aTime = new Date(a.endsAt as Date | string).getTime();
+              const bTime = new Date(b.endsAt as Date | string).getTime();
               return aTime - bTime;
           })
           .slice(0, limit);

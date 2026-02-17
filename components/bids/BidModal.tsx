@@ -210,7 +210,7 @@ export const BidModal: React.FC<BidModalProps> = ({
       <div className="flex items-center justify-center min-h-screen px-4 text-center">
         {/* Backdrop with Blur */}
         <div 
-            className="fixed inset-0 bg-shuk-dark/80 backdrop-blur-md transition-opacity" 
+            className="fixed inset-0 bg-breakhit-dark/80 backdrop-blur-md transition-opacity" 
             onClick={onClose}
             aria-hidden="true"
         ></div>
@@ -218,18 +218,18 @@ export const BidModal: React.FC<BidModalProps> = ({
         {/* Modal Panel */}
         <div 
             ref={modalRef}
-            className="relative bg-shuk-surface border border-shuk-border rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] max-w-lg w-full p-6 animate-fade-in-up transform transition-all scale-100 text-left overflow-hidden"
+            className="relative bg-breakhit-surface border border-breakhit-border rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] max-w-lg w-full p-6 animate-fade-in-up transform transition-all scale-100 text-left overflow-hidden"
         >
             {showSuccess ? (
-                <div className="absolute inset-0 bg-shuk-surface z-20 flex flex-col items-center justify-center animate-fade-in-up">
+                <div className="absolute inset-0 bg-breakhit-surface z-20 flex flex-col items-center justify-center animate-fade-in-up">
                     <div className="w-24 h-24 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mb-6 animate-bounce-short ring-2 ring-green-500/20">
                         <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                         </svg>
                     </div>
                     <h3 className="text-3xl font-display font-bold text-white mb-2 tracking-tight">Bid Placed!</h3>
-                    <p className="text-shuk-silver font-medium">You are the highest bidder.</p>
-                    <div className="mt-6 text-2xl font-black text-shuk-primary">
+                    <p className="text-breakhit-silver font-medium">You are the highest bidder.</p>
+                    <div className="mt-6 text-2xl font-black text-breakhit-primary">
                         ${parseFloat(bidAmount).toLocaleString()}
                     </div>
                 </div>
@@ -238,7 +238,7 @@ export const BidModal: React.FC<BidModalProps> = ({
                     {/* Close Button */}
                     <button 
                         onClick={onClose} 
-                        className="absolute top-4 right-4 text-shuk-muted hover:text-white p-2 rounded-full hover:bg-shuk-surfaceHigh transition-colors z-10 focus:outline-none focus:ring-2 focus:ring-shuk-primary"
+                        className="absolute top-4 right-4 text-breakhit-muted hover:text-white p-2 rounded-full hover:bg-breakhit-surfaceHigh transition-colors z-10 focus:outline-none focus:ring-2 focus:ring-breakhit-primary"
                         aria-label="Close modal"
                     >
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -246,17 +246,17 @@ export const BidModal: React.FC<BidModalProps> = ({
 
                     <div className="mb-6 text-center">
                         <h3 id="bid-modal-title" className="text-2xl font-display font-bold text-white tracking-tight">Place Bid</h3>
-                        <p className="text-shuk-muted text-sm mt-1 truncate px-8 font-medium">{listing.title}</p>
+                        <p className="text-breakhit-muted text-sm mt-1 truncate px-8 font-medium">{listing.title}</p>
                     </div>
 
                     {/* Listing Summary Card */}
-                    <div className="bg-shuk-dark/50 p-4 rounded-xl mb-6 flex items-center justify-between border border-shuk-border shadow-inner">
+                    <div className="bg-breakhit-dark/50 p-4 rounded-xl mb-6 flex items-center justify-between border border-breakhit-border shadow-inner">
                         <div>
-                            <span className="block text-[10px] font-bold text-shuk-muted uppercase tracking-wider mb-1">Current Price</span>
+                            <span className="block text-[10px] font-bold text-breakhit-muted uppercase tracking-wider mb-1">Current Price</span>
                             <span className="font-mono font-black text-3xl text-white tracking-tight text-shadow">${currentPriceDisplay.toLocaleString()}</span>
                         </div>
                         <div className="text-right">
-                            <span className="block text-[10px] font-bold text-shuk-muted uppercase tracking-wider mb-1">Time Left</span>
+                            <span className="block text-[10px] font-bold text-breakhit-muted uppercase tracking-wider mb-1">Time Left</span>
                             <Countdown 
                                 targetDate={parsedEndsAt} 
                                 fallback={<span className="text-red-500 font-bold">Ended</span>} 
@@ -269,25 +269,25 @@ export const BidModal: React.FC<BidModalProps> = ({
                     <form onSubmit={handleSubmit} className="relative">
                         <div className="mb-6">
                             <div className="flex justify-between items-center mb-2">
-                                <label htmlFor="bid-amount" className="block text-xs font-bold text-shuk-silver uppercase tracking-wide">Your Bid</label>
+                                <label htmlFor="bid-amount" className="block text-xs font-bold text-breakhit-silver uppercase tracking-wide">Your Bid</label>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs text-shuk-muted">Minimum:</span>
-                                    <span className="text-xs font-bold text-shuk-primary bg-shuk-primary/10 px-2 py-1 rounded border border-shuk-primary/20">
+                                    <span className="text-xs text-breakhit-muted">Minimum:</span>
+                                    <span className="text-xs font-bold text-breakhit-primary bg-breakhit-primary/10 px-2 py-1 rounded border border-breakhit-primary/20">
                                         ${minBid.toLocaleString()}
                                     </span>
                                 </div>
                             </div>
                             
                             <div className="relative group">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-shuk-muted font-bold text-2xl pointer-events-none">$</span>
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-breakhit-muted font-bold text-2xl pointer-events-none">$</span>
                                 <input 
                                     id="bid-amount"
                                     ref={inputRef}
                                     type="number" 
                                     value={bidAmount} 
                                     onChange={e => setBidAmount(e.target.value)} 
-                                    className={`w-full pl-10 pr-4 py-4 rounded-xl border-2 bg-shuk-dark font-bold text-3xl text-white outline-none transition-all placeholder-shuk-muted/50
-                                        ${error ? 'border-red-500/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/10' : 'border-shuk-border focus:border-shuk-primary focus:ring-4 focus:ring-shuk-primary/10'}
+                                    className={`w-full pl-10 pr-4 py-4 rounded-xl border-2 bg-breakhit-dark font-bold text-3xl text-white outline-none transition-all placeholder-breakhit-muted/50
+                                        ${error ? 'border-red-500/50 focus:border-red-500 focus:ring-4 focus:ring-red-500/10' : 'border-breakhit-border focus:border-breakhit-primary focus:ring-4 focus:ring-breakhit-primary/10'}
                                     `}
                                     step="1"
                                     min={minBid}
@@ -319,10 +319,10 @@ export const BidModal: React.FC<BidModalProps> = ({
                                     key={inc} 
                                     onClick={() => handleQuickIncrement(inc)} 
                                     disabled={isSubmitting || isEnded}
-                                    className="py-3 bg-shuk-surfaceHigh border border-shuk-border hover:border-shuk-primary/50 hover:bg-shuk-border text-shuk-primary font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95 focus:outline-none focus:ring-2 focus:ring-shuk-primary relative group overflow-hidden"
+                                    className="py-3 bg-breakhit-surfaceHigh border border-breakhit-border hover:border-breakhit-primary/50 hover:bg-breakhit-border text-breakhit-primary font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95 focus:outline-none focus:ring-2 focus:ring-breakhit-primary relative group overflow-hidden"
                                 >
                                     <span className="relative z-10">+{inc}</span>
-                                    <div className="absolute inset-0 bg-shuk-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                    <div className="absolute inset-0 bg-breakhit-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                 </button>
                             ))}
                         </div>
@@ -330,11 +330,11 @@ export const BidModal: React.FC<BidModalProps> = ({
                         <button 
                             type="submit" 
                             disabled={isSubmitting || isEnded || !!error || !bidAmount}
-                            className="w-full py-4 bg-shuk-primary hover:bg-cyan-300 disabled:bg-shuk-border disabled:text-shuk-muted text-shuk-dark font-black rounded-xl shadow-[0_0_20px_rgba(34,211,238,0.3)] hover:shadow-[0_0_30px_rgba(34,211,238,0.5)] transition-all transform active:scale-[0.98] flex items-center justify-center gap-3 text-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-shuk-dark focus:ring-shuk-primary"
+                            className="w-full py-4 bg-breakhit-primary hover:bg-cyan-300 disabled:bg-breakhit-border disabled:text-breakhit-muted text-breakhit-dark font-black rounded-xl shadow-[0_0_20px_rgba(34,211,238,0.3)] hover:shadow-[0_0_30px_rgba(34,211,238,0.5)] transition-all transform active:scale-[0.98] flex items-center justify-center gap-3 text-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-breakhit-dark focus:ring-breakhit-primary"
                         >
                             {isSubmitting ? (
                                 <>
-                                    <svg className="animate-spin h-5 w-5 text-shuk-dark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <svg className="animate-spin h-5 w-5 text-breakhit-dark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
@@ -348,28 +348,28 @@ export const BidModal: React.FC<BidModalProps> = ({
 
                     {/* Recent Bids Section */}
                     {bidHistory.length > 0 && (
-                        <div className="mt-8 pt-6 border-t border-shuk-border">
+                        <div className="mt-8 pt-6 border-t border-breakhit-border">
                             <div className="flex justify-between items-center mb-4">
-                                <h4 className="text-[10px] font-bold text-shuk-muted uppercase tracking-wider">Recent Activity</h4>
+                                <h4 className="text-[10px] font-bold text-breakhit-muted uppercase tracking-wider">Recent Activity</h4>
                             </div>
                             
                             <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar pr-1">
                                 {bidHistory.slice(0, 5).map((bid) => {
                                     const isMe = bid.bidderId === currentUser.id;
                                     return (
-                                        <div key={bid.id} className={`flex justify-between items-center px-4 py-2.5 rounded-lg text-sm border ${isMe ? 'bg-shuk-primary/10 border-shuk-primary/30' : 'bg-shuk-dark border-shuk-border'}`}>
+                                        <div key={bid.id} className={`flex justify-between items-center px-4 py-2.5 rounded-lg text-sm border ${isMe ? 'bg-breakhit-primary/10 border-breakhit-primary/30' : 'bg-breakhit-dark border-breakhit-border'}`}>
                                             <div className="flex items-center gap-3">
-                                                <div className={`w-2 h-2 rounded-full ${isMe ? 'bg-shuk-primary shadow-[0_0_8px_rgba(34,211,238,0.8)]' : 'bg-shuk-muted'}`}></div>
+                                                <div className={`w-2 h-2 rounded-full ${isMe ? 'bg-breakhit-primary shadow-[0_0_8px_rgba(34,211,238,0.8)]' : 'bg-breakhit-muted'}`}></div>
                                                 <div className="flex flex-col">
-                                                    <span className={`font-bold ${isMe ? 'text-shuk-primary' : 'text-shuk-silver'}`}>
+                                                    <span className={`font-bold ${isMe ? 'text-breakhit-primary' : 'text-breakhit-silver'}`}>
                                                         {isMe ? 'You' : bid.bidderName}
                                                     </span>
-                                                    <span className="text-[10px] text-shuk-muted">
+                                                    <span className="text-[10px] text-breakhit-muted">
                                                         {formatSmartDate(bid.createdAt)}
                                                     </span>
                                                 </div>
                                             </div>
-                                            <div className={`font-mono font-bold ${isMe ? 'text-white' : 'text-shuk-silver'}`}>
+                                            <div className={`font-mono font-bold ${isMe ? 'text-white' : 'text-breakhit-silver'}`}>
                                                 ${bid.amount.toLocaleString()}
                                             </div>
                                         </div>

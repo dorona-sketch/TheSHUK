@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.doron.theshuk',
-  appName: 'The Digital Shuk',
+  appId: 'com.doron.breakhit',
+  appName: 'Break-Hit',
   webDir: 'dist'
 };
 

@@ -1,6 +1,6 @@
 {
-  "name": "The Digital Shuk",
-  "description": "A premium marketplace for collectibles. The Digital Shuk offers AI-assisted listing creation and live breaking in an elegant environment.",
+  "name": "Break-Hit",
+  "description": "A premium marketplace for collectibles. Break-Hit offers AI-assisted listing creation and live breaking in an elegant environment.",
   "requestFramePermissions": [
     "camera",
     "geolocation"

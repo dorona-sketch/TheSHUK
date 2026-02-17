@@ -2,7 +2,7 @@
 import React, { useRef, useState } from 'react';
 import { Listing, ListingType, BreakStatus, ProductCategory } from '../types';
 import { Countdown } from './Countdown';
-import { ShukFrame } from './ui/ShukFrame';
+import { BreakHitFrame } from './ui/BreakHitFrame';
 
 interface ListingCardProps {
   listing: Listing;
@@ -62,7 +62,7 @@ export const ListingCard = React.memo<ListingCardProps>(({
   // --- COMPACT RENDER (For Split View) ---
   if (compact) {
       return (
-        <div className="flex bg-shuk-surface border border-shuk-border rounded-lg overflow-hidden h-28 hover:bg-shuk-surfaceHigh transition-colors group relative">
+        <div className="flex bg-breakhit-surface border border-breakhit-border rounded-lg overflow-hidden h-28 hover:bg-breakhit-surfaceHigh transition-colors group relative">
             {/* Image */}
             <div className="w-24 h-full bg-black relative flex-shrink-0">
                 <img 
@@ -92,7 +92,7 @@ export const ListingCard = React.memo<ListingCardProps>(({
                         <div className="text-xs text-gray-400 font-medium">
                             {isAuction ? 'Current Bid' : (isBreak ? 'Entry' : 'Price')}
                         </div>
-                        <div className="text-sm font-bold text-shuk-primary">
+                        <div className="text-sm font-bold text-breakhit-primary">
                             ${isAuction ? (listing.currentBid || listing.price).toLocaleString() : listing.price.toLocaleString()}
                         </div>
                     </div>
@@ -103,7 +103,7 @@ export const ListingCard = React.memo<ListingCardProps>(({
                         className={`min-h-[40px] px-3.5 py-2 rounded text-sm font-bold uppercase tracking-wider 
                             ${isOwner 
                                 ? 'bg-gray-700 text-gray-200' 
-                                : 'bg-shuk-primary text-shuk-dark hover:bg-cyan-300'
+                                : 'bg-breakhit-primary text-breakhit-dark hover:bg-cyan-300'
                             }`}
                     >
                         {isOwner ? 'Edit' : actionLabel}
@@ -117,8 +117,8 @@ export const ListingCard = React.memo<ListingCardProps>(({
   // --- STANDARD RENDER (Grid View) ---
   return (
     <div ref={cardRef} className="group relative h-full">
-      <ShukFrame variant="card" interactive={true} className="h-full flex flex-col">
-          <div className="aspect-[3/4] w-full overflow-hidden bg-shuk-surfaceHigh relative">
+      <BreakHitFrame variant="card" interactive={true} className="h-full flex flex-col">
+          <div className="aspect-[3/4] w-full overflow-hidden bg-breakhit-surfaceHigh relative">
             <img 
                 src={imageUrl} 
                 alt={listing.title} 
@@ -128,9 +128,9 @@ export const ListingCard = React.memo<ListingCardProps>(({
             />
             
             {isGraded && listing.gradingCompany && listing.grade && (
-                <div className="absolute top-2 right-2 bg-shuk-dark/90 backdrop-blur border border-shuk-border shadow-lg px-2 py-1 rounded flex flex-col items-center leading-none z-10">
-                    <span className="text-[10px] font-bold text-shuk-muted uppercase">{listing.gradingCompany}</span>
-                    <span className="text-lg font-black text-shuk-primary">{listing.grade}</span>
+                <div className="absolute top-2 right-2 bg-breakhit-dark/90 backdrop-blur border border-breakhit-border shadow-lg px-2 py-1 rounded flex flex-col items-center leading-none z-10">
+                    <span className="text-[10px] font-bold text-breakhit-muted uppercase">{listing.gradingCompany}</span>
+                    <span className="text-lg font-black text-breakhit-primary">{listing.grade}</span>
                 </div>
             )}
 
@@ -147,25 +147,25 @@ export const ListingCard = React.memo<ListingCardProps>(({
             </div>
           </div>
           
-          <div className="flex flex-col flex-1 p-3 bg-shuk-surface">
+          <div className="flex flex-col flex-1 p-3 bg-breakhit-surface">
             <div className="flex-1">
               <h3 className="text-sm font-medium text-gray-200 line-clamp-2 leading-snug group-hover:text-white transition-colors">{listing.title}</h3>
             </div>
             
-            <div className="mt-3 pt-3 border-t border-shuk-border flex items-center justify-between">
+            <div className="mt-3 pt-3 border-t border-breakhit-border flex items-center justify-between">
                 <div>
                   <p className="text-[10px] text-gray-500 uppercase font-bold">{isAuction ? 'Bid' : 'Price'}</p>
                   <p className="text-lg font-bold text-white">${isAuction ? (listing.currentBid || listing.price).toLocaleString() : listing.price.toLocaleString()}</p>
                 </div>
                 <button
                     onClick={handleMainAction}
-                    className="min-h-[40px] bg-shuk-primary/10 text-shuk-primary hover:bg-shuk-primary hover:text-shuk-dark border border-shuk-primary/50 px-3.5 py-2 rounded text-sm font-bold uppercase transition-all"
+                    className="min-h-[40px] bg-breakhit-primary/10 text-breakhit-primary hover:bg-breakhit-primary hover:text-breakhit-dark border border-breakhit-primary/50 px-3.5 py-2 rounded text-sm font-bold uppercase transition-all"
                 >
                     {actionLabel}
                 </button>
             </div>
           </div>
-      </ShukFrame>
+      </BreakHitFrame>
     </div>
   );
 });
