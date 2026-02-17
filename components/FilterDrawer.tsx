@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
-import { PokemonType, VariantTag, CardCategory, Condition, SortOption, ProductCategory, GradingCompany, SealedProductType, SearchScope, BreakStatus, AppMode, Language } from '../types';
+import { PokemonType, VariantTag, CardCategory, Condition, SortOption, ProductCategory, GradingCompany, SealedProductType, SearchScope, BreakStatus, AppMode, Language, ListingType, Listing, TcgSet } from '../types';
 import { TAG_DISPLAY_LABELS } from '../constants';
 
 interface FilterDrawerProps {
@@ -58,9 +58,28 @@ const getPokemonEra = (releaseDate?: string) => {
     return 'Scarlet & Violet';
 };
 
+const normalizeSearchText = (value: string) => {
+    let text = value.toLowerCase();
+    const synonymMap: Record<string, string> = {
+        'zard': 'charizard',
+        'pika': 'pikachu',
+        'nm': 'near mint',
+        'lp': 'light played',
+        'mp': 'moderately played',
+        'hp': 'heavily played',
+        '1st ed': 'first edition',
+        'fa': 'full art',
+        'aa': 'alternate art'
+    };
+    Object.entries(synonymMap).forEach(([from, to]) => {
+        text = text.replace(new RegExp(`\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\b`, 'g'), to);
+    });
+    return text;
+};
+
 
 export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) => {
-  const { filters, setFilter, sortOption, setSortOption, resetFilters, getSuggestions, appMode, availableSets } = useStore();
+  const { filters, setFilter, sortOption, setSortOption, resetFilters, getSuggestions, appMode, availableSets, listings } = useStore();
 
   // --- Local State for Atomic Updates ---
   // Using Sets ensures O(1) lookup complexity for selections
@@ -78,6 +97,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   const [localSeries, setLocalSeries] = useState<Set<string>>(new Set(filters.series || []));
   const [localSet, setLocalSet] = useState<Set<string>>(new Set(filters.set || []));
   const [localEras, setLocalEras] = useState<Set<string>>(new Set(filters.eras || []));
+  const [localListingTypes, setLocalListingTypes] = useState<Set<ListingType>>(new Set(filters.listingTypes || []));
 
   const [localPokemonTypes, setLocalPokemonTypes] = useState<Set<PokemonType>>(new Set(filters.pokemonTypes || []));
   const [localCardCategories, setLocalCardCategories] = useState<Set<CardCategory>>(new Set(filters.cardCategories || []));
@@ -93,6 +113,8 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   const [localBreakStatus, setLocalBreakStatus] = useState<Set<BreakStatus>>(new Set(filters.breakStatus || []));
   const [localPriceMin, setLocalPriceMin] = useState<string>(filters.priceRange.min?.toString() || '');
   const [localPriceMax, setLocalPriceMax] = useState<string>(filters.priceRange.max?.toString() || '');
+
+  const [savedPresets, setSavedPresets] = useState<{ name: string; data: any }[]>([]);
 
   // --- Autocomplete State ---
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -125,6 +147,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalSeries(new Set(filters.series || []));
       setLocalSet(new Set(filters.set || []));
       setLocalEras(new Set(filters.eras || []));
+      setLocalListingTypes(new Set(filters.listingTypes || []));
 
       setLocalPokemonTypes(new Set(filters.pokemonTypes || []));
       setLocalCardCategories(new Set(filters.cardCategories || []));
@@ -209,11 +232,43 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+      try {
+          const raw = localStorage.getItem('shuk_filter_presets');
+          if (raw) setSavedPresets(JSON.parse(raw));
+      } catch (e) {
+          console.warn('Could not load presets', e);
+      }
+  }, []);
+
   // --- Derived Data ---
+  const effectiveSets = useMemo<TcgSet[]>(() => {
+      if (availableSets.length > 0) return availableSets;
+      const map = new Map<string, TcgSet>();
+      listings.forEach((l: Listing) => {
+          if (!l.setId || !l.setName) return;
+          map.set(l.setId, {
+              id: l.setId,
+              name: l.setName,
+              series: l.series || 'Unknown Series',
+              printedTotal: 0,
+              total: 0,
+              releaseDate: l.releaseDate || `${l.releaseYear || '2000'}-01-01`,
+              images: { symbol: '', logo: '' }
+          });
+      });
+      return Array.from(map.values());
+  }, [availableSets, listings]);
+
   const uniqueSeries = useMemo(() => {
-      const series = new Set(availableSets.map(s => s.series));
+      const series = new Set(effectiveSets.map(s => s.series));
       return Array.from(series).sort();
-  }, [availableSets]);
+  }, [effectiveSets]);
+
+  const uniqueEras = useMemo(() => {
+      const eras = new Set(effectiveSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
+      return ERA_ORDER.filter(era => eras.has(era));
+  }, [effectiveSets]);
 
   const uniqueEras = useMemo(() => {
       const eras = new Set(availableSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
@@ -221,7 +276,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   }, [availableSets]);
 
   const visibleSets = useMemo(() => {
-      let sets = availableSets;
+      let sets = effectiveSets;
       if (localEras.size > 0) {
           sets = sets.filter(s => localEras.has(getPokemonEra(s.releaseDate)));
       }
@@ -229,7 +284,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
           sets = sets.filter(s => localSeries.has(s.series));
       }
       return sets.sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
-  }, [availableSets, localSeries, localEras]);
+  }, [effectiveSets, localSeries, localEras]);
 
   // --- Debounced Suggestions (Main Search) ---
   useEffect(() => {
@@ -337,14 +392,15 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
     setFilter('series', Array.from(localSeries));
     setFilter('set', Array.from(localSet));
     setFilter('eras', Array.from(localEras));
-    setFilter('pokemonTypes', Array.from(localPokemonTypes));
-    setFilter('cardCategories', Array.from(localCardCategories));
-    setFilter('variantTags', Array.from(localVariantTags));
-    setFilter('condition', Array.from(localCondition));
-    setFilter('gradingCompany', Array.from(localGradingCompany));
-    setFilter('grades', Array.from(localGrades));
-    setFilter('sealedProductType', Array.from(localSealedProductType));
-    setFilter('breakStatus', Array.from(localBreakStatus));
+    setFilter('listingTypes', appMode === AppMode.MARKETPLACE ? Array.from(localListingTypes) : []);
+    setFilter('pokemonTypes', appMode === AppMode.BREAKS ? [] : Array.from(localPokemonTypes));
+    setFilter('cardCategories', appMode === AppMode.BREAKS ? [] : Array.from(localCardCategories));
+    setFilter('variantTags', appMode === AppMode.BREAKS ? [] : Array.from(localVariantTags));
+    setFilter('condition', appMode === AppMode.BREAKS ? [] : Array.from(localCondition));
+    setFilter('gradingCompany', appMode === AppMode.BREAKS ? [] : Array.from(localGradingCompany));
+    setFilter('grades', appMode === AppMode.BREAKS ? [] : Array.from(localGrades));
+    setFilter('sealedProductType', appMode === AppMode.BREAKS ? [] : Array.from(localSealedProductType));
+    setFilter('breakStatus', appMode === AppMode.BREAKS ? Array.from(localBreakStatus) : []);
     
     setFilter('category', localCategory);
     
@@ -371,6 +427,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalSeries(new Set());
       setLocalSet(new Set());
       setLocalEras(new Set());
+      setLocalListingTypes(new Set());
       setLocalPokemonTypes(new Set());
       setLocalCardCategories(new Set());
       setLocalVariantTags(new Set());
@@ -391,7 +448,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
           pokeInputRef.current?.focus();
       } else {
           // Smart Fill: Check if suggestion is a Set Name
-          const matchedSet = availableSets.find(s => s.name.toLowerCase() === value.toLowerCase());
+          const matchedSet = effectiveSets.find(s => s.name.toLowerCase() === value.toLowerCase());
           if (matchedSet) {
               setLocalSet(new Set([matchedSet.id]));
               setLocalSeries(new Set([matchedSet.series]));
@@ -445,7 +502,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       <div className="fixed inset-y-0 right-0 flex max-w-full pointer-events-none">
         <div 
             ref={drawerRef}
-            className="w-screen max-w-md pointer-events-auto flex flex-col bg-white shadow-2xl transform transition-transform ease-in-out duration-300 h-full"
+            className="w-screen max-w-md pointer-events-auto flex flex-col bg-white shadow-2xl transform transition-transform ease-in-out duration-300 h-full safe-area-pt safe-area-px"
         >
             {/* Header */}
             <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center shrink-0">
@@ -646,6 +703,28 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     />
                 </section>
 
+                {appMode === AppMode.MARKETPLACE && (
+                    <section>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Listing Mode</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            {[ListingType.DIRECT_SALE, ListingType.AUCTION].map(t => {
+                                const count = listings.filter(l => l.type === t).length;
+                                const selected = localListingTypes.has(t);
+                                return (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => toggleFilter(t, setLocalListingTypes)}
+                                        className={`px-3 py-2 rounded-lg text-xs font-bold border ${selected ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                                    >
+                                        {t === ListingType.AUCTION ? 'Auction' : 'Buy Now'} ({count})
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </section>
+                )}
+
                 {/* Product Category */}
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Product Category</h3>
@@ -693,6 +772,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                             <div className="flex flex-wrap gap-2 mb-3">
                                 {uniqueEras.map(era => {
                                     const isSelected = localEras.has(era);
+                                    const eraCount = listings.filter(l => getPokemonEra(l.releaseDate || `${l.releaseYear || ''}-01-01`) === era).length;
                                     return (
                                         <button
                                             key={era}
@@ -703,7 +783,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                                 : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
                                             }`}
                                         >
-                                            {era}
+                                            {era} ({eraCount})
                                         </button>
                                     );
                                 })}
@@ -763,6 +843,8 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </div>
                 </section>
 
+                {appMode !== AppMode.BREAKS && (
+                <>
                 {/* Pokemon Types */}
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Pokemon Type</h3>
@@ -919,6 +1001,31 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 </label>
                             ))}
                          </div>
+                    </section>
+                )}
+
+                                </>
+                )}
+
+                {appMode === AppMode.BREAKS && (
+                    <section>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Break Status</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {Object.values(BreakStatus).map(status => {
+                                const selected = localBreakStatus.has(status);
+                                const count = listings.filter(l => l.breakStatus === status).length;
+                                return (
+                                    <button
+                                        type="button"
+                                        key={status}
+                                        onClick={() => toggleFilter(status, setLocalBreakStatus)}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-bold border ${selected ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                                    >
+                                        {status} ({count})
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </section>
                 )}
 

@@ -526,6 +526,7 @@ export interface FilterState {
   series: string[];
   set: string[];
   eras: string[];
+  listingTypes: ListingType[];
   boosterName?: string;
   descriptionQuery?: string;
   category?: ProductCategory;

@@ -19,6 +19,25 @@ const getPokemonEra = (rawDate?: string, rawYear?: string) => {
     return 'Scarlet & Violet';
 };
 
+const normalizeSearchText = (value: string) => {
+    let text = value.toLowerCase();
+    const synonymMap: Record<string, string> = {
+        'zard': 'charizard',
+        'pika': 'pikachu',
+        'nm': 'near mint',
+        'lp': 'light played',
+        'mp': 'moderately played',
+        'hp': 'heavily played',
+        '1st ed': 'first edition',
+        'fa': 'full art',
+        'aa': 'alternate art'
+    };
+    Object.entries(synonymMap).forEach(([from, to]) => {
+        text = text.replace(new RegExp(`\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\b`, 'g'), to);
+    });
+    return text;
+};
+
 
 interface WalletInterface {
     setTransactions: React.Dispatch<React.SetStateAction<WalletTransaction[]>>;
@@ -32,7 +51,7 @@ export const useMarketplaceStore = (
 ) => {
     const [listings, setListings] = useState<Listing[]>(INITIAL_LISTINGS);
     const [bids, setBids] = useState<Bid[]>([]);
-    const [appMode, setAppMode] = useState<AppMode>(AppMode.COMBINED);
+    const [appMode, setAppMode] = useState<AppMode>(AppMode.MARKETPLACE);
     const [sortOption, setSortOption] = useState<SortOption>(SortOption.NEWEST);
     
     const [filters, setFilters] = useState<FilterState>({
@@ -52,6 +71,7 @@ export const useMarketplaceStore = (
         series: [],
         set: [],
         eras: [],
+        listingTypes: [],
         boosterName: '',
         descriptionQuery: '',
         category: undefined 
@@ -69,36 +89,46 @@ export const useMarketplaceStore = (
         const setReleaseDateById = new Map(availableSets.map(set => [set.id, set.releaseDate]));
 
         if (filters.searchQuery) {
-            const q = filters.searchQuery.toLowerCase();
+            const q = normalizeSearchText(filters.searchQuery);
             result = result.filter(l => {
-                if (filters.searchScope === SearchScope.TITLE) return l.title.toLowerCase().includes(q);
-                if (filters.searchScope === SearchScope.POKEMON) return l.pokemonName?.toLowerCase().includes(q);
-                if (filters.searchScope === SearchScope.SET) return l.setName?.toLowerCase().includes(q) || l.series?.toLowerCase().includes(q);
-                if (filters.searchScope === SearchScope.SELLER) return l.sellerName.toLowerCase().includes(q);
-                if (filters.searchScope === SearchScope.BOOSTER) return l.boosterName?.toLowerCase().includes(q);
-                return l.title.toLowerCase().includes(q) || 
-                       l.pokemonName?.toLowerCase().includes(q) || 
-                       l.setName?.toLowerCase().includes(q) ||
-                       l.description.toLowerCase().includes(q) ||
-                       l.sellerName.toLowerCase().includes(q);
+                const title = normalizeSearchText(l.title || '');
+                const pokemon = normalizeSearchText(l.pokemonName || '');
+                const setName = normalizeSearchText(l.setName || '');
+                const series = normalizeSearchText(l.series || '');
+                const seller = normalizeSearchText(l.sellerName || '');
+                const desc = normalizeSearchText(l.description || '');
+                if (filters.searchScope === SearchScope.TITLE) return title.includes(q);
+                if (filters.searchScope === SearchScope.POKEMON) return pokemon.includes(q);
+                if (filters.searchScope === SearchScope.SET) return setName.includes(q) || series.includes(q);
+                if (filters.searchScope === SearchScope.SELLER) return seller.includes(q);
+                if (filters.searchScope === SearchScope.BOOSTER) return normalizeSearchText(l.boosterName || '').includes(q);
+                return title.includes(q) || pokemon.includes(q) || setName.includes(q) || desc.includes(q) || seller.includes(q);
             });
         }
 
-        if (filters.pokemonName) result = result.filter(l => l.pokemonName?.toLowerCase().includes(filters.pokemonName!.toLowerCase()));
+        if (filters.pokemonName) {
+            const query = normalizeSearchText(filters.pokemonName);
+            result = result.filter(l => normalizeSearchText(l.pokemonName || '').includes(query));
+        }
         if (filters.language) result = result.filter(l => l.language === filters.language);
         if (filters.boosterName) {
             const bn = filters.boosterName.toLowerCase();
             result = result.filter(l => l.boosterName?.toLowerCase().includes(bn) || l.openedProduct?.productName.toLowerCase().includes(bn));
         }
         if (filters.descriptionQuery) {
-            const desc = filters.descriptionQuery.toLowerCase();
-            result = result.filter(l => (l.description || '').toLowerCase().includes(desc));
+            const desc = normalizeSearchText(filters.descriptionQuery);
+            result = result.filter(l => normalizeSearchText(l.description || '').includes(desc));
         }
         if (filters.eras.length > 0) {
             result = result.filter(l => {
                 const era = getPokemonEra(setReleaseDateById.get(l.setId || ''), l.releaseYear || l.releaseDate?.slice(0, 4));
                 return era ? filters.eras.includes(era) : false;
             });
+        }
+
+
+        if (appMode === AppMode.MARKETPLACE && filters.listingTypes.length > 0) {
+            result = result.filter(l => filters.listingTypes.includes(l.type));
         }
 
         // Apply Product Category Filter
@@ -184,6 +214,7 @@ export const useMarketplaceStore = (
             series: [],
             set: [],
             eras: [],
+            listingTypes: [],
             boosterName: '',
             descriptionQuery: '',
             category: undefined
