@@ -5,6 +5,7 @@ import {
     AppMode, Bid, WalletTransaction, TransactionType, TcgSet 
 } from '../types';
 import { INITIAL_LISTINGS, POPULAR_POKEMON } from '../constants';
+import { getPokemonEra, normalizeSearchText } from '../utils/filterUtils';
 
 const getPokemonEra = (rawDate?: string, rawYear?: string) => {
     const parsed = rawYear ? parseInt(rawYear, 10) : (rawDate ? parseInt(rawDate.slice(0, 4), 10) : NaN);

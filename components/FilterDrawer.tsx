@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useStore } from '../context/StoreContext';
 import { PokemonType, VariantTag, CardCategory, Condition, SortOption, ProductCategory, GradingCompany, SealedProductType, SearchScope, BreakStatus, AppMode, Language, ListingType, Listing, TcgSet } from '../types';
 import { TAG_DISPLAY_LABELS } from '../constants';
+import { getPokemonEra, normalizeSearchText } from '../utils/filterUtils';
 
 interface FilterDrawerProps {
   isOpen: boolean;
