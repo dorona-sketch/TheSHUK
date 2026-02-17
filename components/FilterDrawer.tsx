@@ -34,6 +34,31 @@ const SCOPE_LABELS: Record<SearchScope, string> = {
 
 const COMMON_GRADES = ['10', '9.5', '9', '8.5', '8', '7', '6', '5', '4', '3', '2', '1'];
 
+const ERA_ORDER = [
+    'Vintage (WOTC)',
+    'EX Era',
+    'Diamond & Pearl',
+    'Black & White',
+    'XY',
+    'Sun & Moon',
+    'Sword & Shield',
+    'Scarlet & Violet'
+] as const;
+
+const getPokemonEra = (releaseDate?: string) => {
+    const year = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : NaN;
+    if (Number.isNaN(year)) return '';
+    if (year <= 2002) return 'Vintage (WOTC)';
+    if (year <= 2006) return 'EX Era';
+    if (year <= 2010) return 'Diamond & Pearl';
+    if (year <= 2013) return 'Black & White';
+    if (year <= 2016) return 'XY';
+    if (year <= 2019) return 'Sun & Moon';
+    if (year <= 2022) return 'Sword & Shield';
+    return 'Scarlet & Violet';
+};
+
+
 export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) => {
   const { filters, setFilter, sortOption, setSortOption, resetFilters, getSuggestions, appMode, availableSets } = useStore();
 
@@ -46,11 +71,13 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
   // Text Filters
   const [localPokemonName, setLocalPokemonName] = useState<string>(filters.pokemonName || '');
   const [localBoosterName, setLocalBoosterName] = useState<string>(filters.boosterName || '');
+  const [localDescriptionQuery, setLocalDescriptionQuery] = useState<string>(filters.descriptionQuery || '');
   const [localLanguage, setLocalLanguage] = useState<string>(filters.language || '');
   
   // Set-based Multi-Select Filters
   const [localSeries, setLocalSeries] = useState<Set<string>>(new Set(filters.series || []));
   const [localSet, setLocalSet] = useState<Set<string>>(new Set(filters.set || []));
+  const [localEras, setLocalEras] = useState<Set<string>>(new Set(filters.eras || []));
 
   const [localPokemonTypes, setLocalPokemonTypes] = useState<Set<PokemonType>>(new Set(filters.pokemonTypes || []));
   const [localCardCategories, setLocalCardCategories] = useState<Set<CardCategory>>(new Set(filters.cardCategories || []));
@@ -93,9 +120,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       
       setLocalPokemonName(filters.pokemonName || '');
       setLocalBoosterName(filters.boosterName || '');
+      setLocalDescriptionQuery(filters.descriptionQuery || '');
       setLocalLanguage(filters.language || '');
       setLocalSeries(new Set(filters.series || []));
       setLocalSet(new Set(filters.set || []));
+      setLocalEras(new Set(filters.eras || []));
 
       setLocalPokemonTypes(new Set(filters.pokemonTypes || []));
       setLocalCardCategories(new Set(filters.cardCategories || []));
@@ -186,13 +215,21 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       return Array.from(series).sort();
   }, [availableSets]);
 
+  const uniqueEras = useMemo(() => {
+      const eras = new Set(availableSets.map(s => getPokemonEra(s.releaseDate)).filter(Boolean));
+      return ERA_ORDER.filter(era => eras.has(era));
+  }, [availableSets]);
+
   const visibleSets = useMemo(() => {
       let sets = availableSets;
+      if (localEras.size > 0) {
+          sets = sets.filter(s => localEras.has(getPokemonEra(s.releaseDate)));
+      }
       if (localSeries.size > 0) {
           sets = sets.filter(s => localSeries.has(s.series));
       }
       return sets.sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
-  }, [availableSets, localSeries]);
+  }, [availableSets, localSeries, localEras]);
 
   // --- Debounced Suggestions (Main Search) ---
   useEffect(() => {
@@ -293,11 +330,13 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
     
     setFilter('pokemonName', localPokemonName);
     setFilter('boosterName', localBoosterName);
+    setFilter('descriptionQuery', localDescriptionQuery);
     setFilter('language', localLanguage);
     
     // Convert Sets back to arrays for global store interface
     setFilter('series', Array.from(localSeries));
     setFilter('set', Array.from(localSet));
+    setFilter('eras', Array.from(localEras));
     setFilter('pokemonTypes', Array.from(localPokemonTypes));
     setFilter('cardCategories', Array.from(localCardCategories));
     setFilter('variantTags', Array.from(localVariantTags));
@@ -327,9 +366,11 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
       setLocalSort(SortOption.NEWEST);
       setLocalPokemonName('');
       setLocalBoosterName('');
+      setLocalDescriptionQuery('');
       setLocalLanguage('');
       setLocalSeries(new Set());
       setLocalSet(new Set());
+      setLocalEras(new Set());
       setLocalPokemonTypes(new Set());
       setLocalCardCategories(new Set());
       setLocalVariantTags(new Set());
@@ -354,6 +395,8 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
           if (matchedSet) {
               setLocalSet(new Set([matchedSet.id]));
               setLocalSeries(new Set([matchedSet.series]));
+              const era = getPokemonEra(matchedSet.releaseDate);
+              if (era) setLocalEras(new Set([era]));
               setLocalSearch('');
           } else {
               setLocalSearch(value);
@@ -592,6 +635,17 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </select>
                 </section>
 
+                <section>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Description Contains</h3>
+                    <input
+                        type="text"
+                        value={localDescriptionQuery}
+                        onChange={(e) => setLocalDescriptionQuery(e.target.value)}
+                        placeholder="e.g. near mint, swirl, first edition"
+                        className="w-full border-gray-300 rounded-lg shadow-sm p-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                </section>
+
                 {/* Product Category */}
                 <section>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Product Category</h3>
@@ -624,9 +678,9 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                 <section>
                     <div className="flex justify-between items-end mb-3">
                         <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Series & Set</h3>
-                        {(localSeries.size > 0 || localSet.size > 0) && (
+                        {(localSeries.size > 0 || localSet.size > 0 || localEras.size > 0) && (
                             <button 
-                                onClick={() => { setLocalSeries(new Set()); setLocalSet(new Set()); }}
+                                onClick={() => { setLocalSeries(new Set()); setLocalSet(new Set()); setLocalEras(new Set()); }}
                                 className="text-[10px] text-red-600 hover:underline"
                             >
                                 Reset Selection
@@ -635,7 +689,26 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                     </div>
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-2">Era / Series</label>
+                            <label className="block text-xs font-medium text-gray-500 mb-2">Era</label>
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                {uniqueEras.map(era => {
+                                    const isSelected = localEras.has(era);
+                                    return (
+                                        <button
+                                            key={era}
+                                            onClick={() => toggleFilter(era, setLocalEras)}
+                                            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                                                isSelected
+                                                ? 'bg-fuchsia-600 text-white border-fuchsia-600 shadow-md'
+                                                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {era}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <label className="block text-xs font-medium text-gray-500 mb-2">Series</label>
                             <div className="flex flex-wrap gap-2">
                                 {uniqueSeries.map(series => {
                                     const isSelected = localSeries.has(series);
@@ -668,6 +741,10 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                                 if (!localSeries.has(set.series)) {
                                                     setLocalSeries(prev => new Set(prev).add(set.series));
                                                 }
+                                                const era = getPokemonEra(set.releaseDate);
+                                                if (era && !localEras.has(era)) {
+                                                    setLocalEras(prev => new Set(prev).add(era));
+                                                }
                                             }}
                                             className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
                                         />
@@ -675,6 +752,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                             <div className="text-xs font-bold text-gray-700 truncate">{set.name}</div>
                                             <div className="text-[10px] text-gray-400 flex justify-between">
                                                 <span>{set.series}</span>
+                                                <span>{getPokemonEra(set.releaseDate)}</span>
                                                 <span>{set.total} cards</span>
                                             </div>
                                         </div>

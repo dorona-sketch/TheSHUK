@@ -6,6 +6,20 @@ import {
 } from '../types';
 import { INITIAL_LISTINGS, POPULAR_POKEMON } from '../constants';
 
+const getPokemonEra = (rawDate?: string, rawYear?: string) => {
+    const parsed = rawYear ? parseInt(rawYear, 10) : (rawDate ? parseInt(rawDate.slice(0, 4), 10) : NaN);
+    if (Number.isNaN(parsed)) return '';
+    if (parsed <= 2002) return 'Vintage (WOTC)';
+    if (parsed <= 2006) return 'EX Era';
+    if (parsed <= 2010) return 'Diamond & Pearl';
+    if (parsed <= 2013) return 'Black & White';
+    if (parsed <= 2016) return 'XY';
+    if (parsed <= 2019) return 'Sun & Moon';
+    if (parsed <= 2022) return 'Sword & Shield';
+    return 'Scarlet & Violet';
+};
+
+
 interface WalletInterface {
     setTransactions: React.Dispatch<React.SetStateAction<WalletTransaction[]>>;
 }
@@ -37,7 +51,9 @@ export const useMarketplaceStore = (
         language: '',
         series: [],
         set: [],
+        eras: [],
         boosterName: '',
+        descriptionQuery: '',
         category: undefined 
     });
 
@@ -49,6 +65,8 @@ export const useMarketplaceStore = (
         } else if (appMode === AppMode.BREAKS) {
             result = result.filter(l => l.type === ListingType.TIMED_BREAK);
         }
+
+        const setReleaseDateById = new Map(availableSets.map(set => [set.id, set.releaseDate]));
 
         if (filters.searchQuery) {
             const q = filters.searchQuery.toLowerCase();
@@ -71,6 +89,16 @@ export const useMarketplaceStore = (
         if (filters.boosterName) {
             const bn = filters.boosterName.toLowerCase();
             result = result.filter(l => l.boosterName?.toLowerCase().includes(bn) || l.openedProduct?.productName.toLowerCase().includes(bn));
+        }
+        if (filters.descriptionQuery) {
+            const desc = filters.descriptionQuery.toLowerCase();
+            result = result.filter(l => (l.description || '').toLowerCase().includes(desc));
+        }
+        if (filters.eras.length > 0) {
+            result = result.filter(l => {
+                const era = getPokemonEra(setReleaseDateById.get(l.setId || ''), l.releaseYear || l.releaseDate?.slice(0, 4));
+                return era ? filters.eras.includes(era) : false;
+            });
         }
 
         // Apply Product Category Filter
@@ -155,7 +183,9 @@ export const useMarketplaceStore = (
             language: '',
             series: [],
             set: [],
+            eras: [],
             boosterName: '',
+            descriptionQuery: '',
             category: undefined
         });
     };
@@ -167,14 +197,16 @@ export const useMarketplaceStore = (
         const add = (txt?: string) => { if (txt && txt.toLowerCase().includes(q)) s.add(txt); };
 
         if (scope === SearchScope.ALL || scope === SearchScope.POKEMON) POPULAR_POKEMON.forEach(name => add(name));
-        if (scope === SearchScope.ALL || scope === SearchScope.SET) availableSets.forEach(set => add(set.name));
+        if (scope === SearchScope.ALL || scope === SearchScope.SET) availableSets.forEach(set => { add(set.name); add(set.series); });
 
         listings.forEach(l => {
             if (scope === SearchScope.ALL) {
                 add(l.title);
+                add(l.description);
                 if (l.pokemonName && !POPULAR_POKEMON.includes(l.pokemonName)) add(l.pokemonName);
             } else if (scope === SearchScope.TITLE) add(l.title);
             else if (scope === SearchScope.POKEMON) { if (l.pokemonName && !POPULAR_POKEMON.includes(l.pokemonName)) add(l.pokemonName); }
+            else if (scope === SearchScope.SET) { add(l.setName); add(l.series); }
             else if (scope === SearchScope.SELLER) add(l.sellerName);
             else if (scope === SearchScope.BOOSTER) add(l.boosterName);
         });
