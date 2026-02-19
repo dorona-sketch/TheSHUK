@@ -18,6 +18,9 @@ export const CardRecognitionService = {
     async identify(base64Image: string, mimeType: string = 'image/jpeg'): Promise<IdentificationResult> {
         console.group("CardRecognition Pipeline");
         console.time("Total Pipeline Time");
+
+        const isDataUrl = base64Image.startsWith('data:');
+        const normalizedBase64 = isDataUrl ? (base64Image.split(',')[1] || '') : base64Image;
         
         // 1. Image Pre-processing for OCR
         console.log("Stage 1: Pre-processing (Assumes ROI)...");
@@ -25,7 +28,7 @@ export const CardRecognitionService = {
         // The UI handles cropping (auto or manual) before calling identify.
         // We assume `base64Image` is the best available crop.
 
-        const { leftCorner, rightCorner } = await cropImageCorners(base64Image);
+        const { leftCorner, rightCorner } = await cropImageCorners(normalizedBase64);
         
         const [binaryLeft, binaryRight] = await Promise.all([
             binarizeBase64(leftCorner),
@@ -41,6 +44,7 @@ export const CardRecognitionService = {
         
         // Clean up OCR spacing & Common Char replacements (O->0, I->1, etc)
         let rawId = (ocrResult.normalized || '').replace(/\s+/g, '').toUpperCase();
+        rawId = rawId.replace(/[\\|]/g, '/').replace(/[^A-Z0-9\/-]/g, '');
         
         // Heuristic character fix for numbers (often OCR reads 058 as O58)
         rawId = rawId.replace(/O/g, '0').replace(/[Il]/g, '1');
@@ -49,7 +53,7 @@ export const CardRecognitionService = {
         if (rawId && ocrResult.confidence > 0.4) {
             console.log("Stage 3: Parsing ID", rawId);
             
-            const subsetFullMatch = rawId.match(/^([A-Z]{1,3})(\d+)\/([A-Z]{1,3})?(\d+)$/);
+            const subsetFullMatch = rawId.match(/^([A-Z]{1,4})(\d+)\/([A-Z]{1,4})?(\d+)$/);
             const subsetMixedMatch = rawId.match(/^([A-Z]{1,3})(\d+)\/(\d+)$/);
             const fractionMatch = rawId.match(/^(\d+)\/(\d+)([A-Z]+)?$/);
             const promoMatch = rawId.match(/^([A-Z]{2,5})[-]?(\d+)$/);
@@ -72,10 +76,20 @@ export const CardRecognitionService = {
                     candidates = await searchCardByCollectorNumber(number, total);
                 } else if (promoMatch) {
                     const prefix = promoMatch[1];
-                    const rawNum = promoMatch[2];
                     candidates = await searchCardByCollectorNumber(rawId, undefined, prefix);
                 } else {
                     candidates = await searchCardByCollectorNumber(rawId);
+                }
+
+                // Retry with de-zeroed number when OCR returns e.g. 058/102 but API has 58/102.
+                if (candidates.length === 0) {
+                    const fractionRetry = rawId.match(/^(\d+)\/(\d+)$/);
+                    if (fractionRetry) {
+                        const strippedNum = String(Number(fractionRetry[1]));
+                        if (strippedNum && strippedNum !== fractionRetry[1]) {
+                            candidates = await searchCardByCollectorNumber(strippedNum, fractionRetry[2]);
+                        }
+                    }
                 }
             } catch (e) {
                 console.error("API Search Error", e);
@@ -97,7 +111,7 @@ export const CardRecognitionService = {
         // If API lookup returned nothing (or OCR failed), ask Gemini to identify the card visually
         if (finalCandidates.length === 0) {
             console.log("Stage 3.5: Fallback to Visual AI...");
-            const aiData = await identifyCardFromImage(base64Image);
+            const aiData = await identifyCardFromImage(normalizedBase64);
             
             if (aiData && aiData.cardName) {
                 // Try to find it in API via name + number (if available) to get pricing metadata
@@ -140,7 +154,8 @@ export const CardRecognitionService = {
         // 6. Tie-Break Stage (ROI Strip Signature)
         if (finalCandidates.length > 1) {
             console.log("Stage 4: Ambiguous matches detected. Running Visual Tie-Break...");
-            finalCandidates = await this.performVisualTieBreak(`data:${mimeType};base64,${base64Image}`, finalCandidates);
+            const userImageUrl = isDataUrl ? base64Image : `data:${mimeType};base64,${normalizedBase64}`;
+            finalCandidates = await this.performVisualTieBreak(userImageUrl, finalCandidates);
             
             // Refine confidence based on visual similarity score
             if (finalCandidates[0].visualSimilarity !== undefined) {
