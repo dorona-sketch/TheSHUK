@@ -113,11 +113,12 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                 let bestApprox: any = null;
                 // Minimum area threshold (10% of image)
                 const minArea = (dst.cols * dst.rows) * 0.1;
-                const maxAspectRatio = 1.6;
-                const minAspectRatio = 0.62;
+                const maxAspectRatio = 1.65;
+                const minAspectRatio = 0.58;
 
                 const isCardLikeRect = (width: number, height: number) => {
-                    const ratio = width > height ? width / height : height / width;
+                    if (width <= 0 || height <= 0) return false;
+                    const ratio = width / height;
                     return ratio >= minAspectRatio && ratio <= maxAspectRatio;
                 };
 
@@ -134,9 +135,8 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                         // Look for 4 corners and Convex shape
                         if (approx.rows === 4 && cv.isContourConvex(approx)) {
                             const rect = cv.minAreaRect(approx);
-                            if (!isCardLikeRect(rect.size.width, rect.size.height)) {
+                            if (!isCardLikeRect(rect.size.width, rect.size.height) && !isCardLikeRect(rect.size.height, rect.size.width)) {
                                 approx.delete();
-                                cnt.delete();
                                 continue;
                             }
 
@@ -189,7 +189,7 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
 
                     // Final sanity checks: card crop should be meaningful and card-like.
                     const warpArea = targetWidth * targetHeight;
-                    if (warpArea < (src.cols * src.rows) * 0.08 || !isCardLikeRect(targetWidth, targetHeight)) {
+                    if (warpArea < (src.cols * src.rows) * 0.08 || (!isCardLikeRect(targetWidth, targetHeight) && !isCardLikeRect(targetHeight, targetWidth))) {
                         bestApprox.delete();
                         src.delete(); dst.delete(); gray.delete(); blurred.delete(); edges.delete();
                         contours.delete(); hierarchy.delete(); morph.delete(); kernel.delete();

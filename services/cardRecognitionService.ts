@@ -4,6 +4,62 @@ import { cropImageCorners, binarizeBase64, extractIDStrips, computeDHash, calcul
 import { performOcrOnCorners, identifyCardFromImage } from './geminiService';
 import { searchCardByCollectorNumber, getCardPrice, fetchSetChaseCard } from './tcgApiService';
 
+
+const scoreIdMatch = (candidateNumber?: string, rawId?: string): number => {
+    if (!candidateNumber || !rawId) return 0;
+
+    const normalizedCandidate = candidateNumber.toUpperCase().replace(/\s+/g, '');
+    const normalizedRaw = rawId.toUpperCase().replace(/\s+/g, '');
+
+    if (!normalizedCandidate || !normalizedRaw) return 0;
+    if (normalizedCandidate === normalizedRaw) return 1;
+
+    const rawFraction = normalizedRaw.match(/^(\d+)\/(\d+)$/);
+    if (rawFraction && normalizedCandidate === String(Number(rawFraction[1]))) return 0.8;
+
+    const numericPart = normalizedRaw.match(/([A-Z]{0,4})(\d+)/);
+    if (numericPart) {
+        const candidateNum = normalizedCandidate.match(/([A-Z]{0,4})(\d+)/);
+        if (candidateNum && String(Number(candidateNum[2])) === String(Number(numericPart[2]))) {
+            return candidateNum[1] === numericPart[1] ? 0.7 : 0.55;
+        }
+    }
+
+    return 0;
+};
+
+const rankCandidates = (candidates: CardCandidate[], rawId?: string): CardCandidate[] => {
+    const ranked = [...candidates].map(c => {
+        const idScore = scoreIdMatch(c.number, rawId);
+        const visualScore = c.visualSimilarity ?? 0;
+        const baseConfidence = c.confidence ?? 0.6;
+        const confidence = Math.max(baseConfidence, Math.min(0.98, (baseConfidence * 0.45) + (idScore * 0.4) + (visualScore * 0.15)));
+        return { ...c, confidence };
+    });
+
+    ranked.sort((a, b) => {
+        const confDiff = (b.confidence || 0) - (a.confidence || 0);
+        if (Math.abs(confDiff) > 0.001) return confDiff;
+        const priceDiff = (b.priceEstimate || 0) - (a.priceEstimate || 0);
+        if (Math.abs(priceDiff) > 0.001) return priceDiff;
+        return (a.cardName || '').localeCompare(b.cardName || '');
+    });
+
+    return ranked;
+};
+
+const dedupeCandidates = (candidates: CardCandidate[]): CardCandidate[] => {
+    const byKey = new Map<string, CardCandidate>();
+    candidates.forEach(c => {
+        const key = `${c.id || c.cardName}-${c.number || ''}-${c.variant || ''}`.toLowerCase();
+        const existing = byKey.get(key);
+        if (!existing || (c.confidence || 0) > (existing.confidence || 0)) {
+            byKey.set(key, c);
+        }
+    });
+    return Array.from(byKey.values());
+};
+
 export const CardRecognitionService = {
 
     /**
@@ -37,7 +93,13 @@ export const CardRecognitionService = {
 
         // 2. OCR Stage
         console.log("Stage 2: Calling OCR...");
-        const ocrResult = await performOcrOnCorners(binaryLeft, binaryRight);
+        const [binaryOcrResult, rawOcrResult] = await Promise.all([
+            performOcrOnCorners(binaryLeft, binaryRight),
+            performOcrOnCorners(leftCorner, rightCorner)
+        ]);
+        const ocrResult = (binaryOcrResult.confidence >= rawOcrResult.confidence)
+            ? binaryOcrResult
+            : rawOcrResult;
         console.log("OCR Result:", ocrResult);
 
         let candidates: any[] = [];
@@ -156,18 +218,9 @@ export const CardRecognitionService = {
             console.log("Stage 4: Ambiguous matches detected. Running Visual Tie-Break...");
             const userImageUrl = isDataUrl ? base64Image : `data:${mimeType};base64,${normalizedBase64}`;
             finalCandidates = await this.performVisualTieBreak(userImageUrl, finalCandidates);
-            
-            // Refine confidence based on visual similarity score
-            if (finalCandidates[0].visualSimilarity !== undefined) {
-                finalCandidates.forEach(c => {
-                    const visualScore = c.visualSimilarity || 0;
-                    c.confidence = (0.9 + visualScore) / 2;
-                });
-                
-                // Re-sort by final confidence to ensure best match is first
-                finalCandidates.sort((a, b) => b.confidence - a.confidence);
-            }
         }
+
+        finalCandidates = rankCandidates(dedupeCandidates(finalCandidates), rawId);
 
         console.timeEnd("Total Pipeline Time");
         console.groupEnd();
