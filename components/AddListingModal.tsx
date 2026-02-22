@@ -37,6 +37,31 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
   const [tempOriginalImage, setTempOriginalImage] = useState<string | null>(null);
   const [isManualCropping, setIsManualCropping] = useState(false);
   const [showCameraGuide, setShowCameraGuide] = useState(false);
+
+  const normalizeImageForProcessing = async (file: File): Promise<File> => {
+      const isLikelyHeic = /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
+      if (!isLikelyHeic) return file;
+
+      try {
+          const bitmap = await createImageBitmap(file);
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return file;
+          ctx.drawImage(bitmap, 0, 0);
+
+          const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+          bitmap.close();
+          if (!blob) return file;
+
+          const nextName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
+          return new File([blob], nextName, { type: 'image/jpeg', lastModified: Date.now() });
+      } catch (err) {
+          console.warn('HEIC/HEIF conversion failed, falling back to original file', err);
+          return file;
+      }
+  };
   
   // The only image we persist
   const [croppedImage, setCroppedImage] = useState<string | null>(null);
@@ -398,12 +423,18 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
   const launchCameraCapture = () => {
       setShowCameraGuide(false);
-      cameraInputRef.current?.click();
+      if (cameraInputRef.current) {
+          cameraInputRef.current.value = '';
+          cameraInputRef.current.click();
+      }
   };
 
   const handleStandardFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) processUploadedImage(file);
+      if (file) {
+          normalizeImageForProcessing(file).then(processUploadedImage);
+      }
+      e.target.value = '';
   };
 
   // --- Prize Logic ---
@@ -616,10 +647,10 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                         </div>
                         <div className="flex gap-2">
                             <button type="button" onClick={(e) => { e.stopPropagation(); openCameraWithGuide(); }} className="px-5 py-2 bg-gray-900 text-white font-bold rounded-full text-sm">Use Camera</button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }} className="px-5 py-2 bg-white border border-gray-300 text-gray-800 font-bold rounded-full text-sm">From Gallery</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); if (galleryInputRef.current) { galleryInputRef.current.value = ''; galleryInputRef.current.click(); } }} className="px-5 py-2 bg-white border border-gray-300 text-gray-800 font-bold rounded-full text-sm">From Gallery</button>
                         </div>
-                        <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
-                        <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                        <input ref={cameraInputRef} type="file" className="hidden" accept="image/*,image/heic,image/heif" capture="environment" onChange={handleStandardFileChange} />
+                        <input ref={galleryInputRef} type="file" className="hidden" accept="image/*,image/heic,image/heif" onChange={handleStandardFileChange} />
                     </div>
                 )}
 
@@ -704,11 +735,11 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                             )}
                                         </div>
                                     </div>
-                                    <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
-                                    <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                                    <input ref={cameraInputRef} type="file" className="hidden" accept="image/*,image/heic,image/heif" capture="environment" onChange={handleStandardFileChange} />
+                                    <input ref={galleryInputRef} type="file" className="hidden" accept="image/*,image/heic,image/heif" onChange={handleStandardFileChange} />
                                     <div className="flex items-center justify-center gap-2">
                                         <button type="button" onClick={openCameraWithGuide} className="text-xs px-2 py-1 rounded bg-gray-900 text-white">Camera</button>
-                                        <button type="button" onClick={() => galleryInputRef.current?.click()} className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700">Gallery</button>
+                                        <button type="button" onClick={() => { if (galleryInputRef.current) { galleryInputRef.current.value = ''; galleryInputRef.current.click(); } }} className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700">Gallery</button>
                                     </div>
                                     <div className="text-xs text-gray-400 text-center">
                                         Click image to replace.
