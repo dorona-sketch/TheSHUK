@@ -1,3 +1,4 @@
+import { loadOpenCv } from './opencvLoader';
 
 // Utility to crop specific corners from a base64 or Image source
 export const cropImageCorners = async (base64Image: string): Promise<{ leftCorner: string, rightCorner: string }> => {
@@ -61,18 +62,17 @@ function orderPoints(pts: {x:number, y:number}[]) {
  * Returns null if no card is reliably detected, signaling a fallback to manual crop.
  */
 export const autoCropCard = async (base64Image: string): Promise<string | null> => {
-    return new Promise((resolve) => {
-        // @ts-ignore
-        if (typeof window === 'undefined' || !window.cv || !window.cvLoaded) {
-            console.warn("OpenCV not ready, skipping auto-crop");
-            return resolve(null);
-        }
+    const cv = await loadOpenCv();
 
+    if (!cv) {
+        console.warn('OpenCV not available, skipping auto-crop');
+        return null;
+    }
+
+    return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
             try {
-                // @ts-ignore
-                const cv = window.cv;
                 const src = cv.imread(img);
 
                 const dsize = new cv.Size(0, 0);
@@ -206,21 +206,9 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                     const maxHeight = Math.max(heightA, heightB);
                     const targetWidth = Math.max(1, Math.round(maxWidth));
                     const targetHeight = Math.max(1, Math.round(maxHeight));
-
-                    // Final sanity checks: card crop should be meaningful and card-like.
                     const warpArea = targetWidth * targetHeight;
-                    if (warpArea < (src.cols * src.rows) * 0.08 || (!isCardLikeRect(targetWidth, targetHeight) && !isCardLikeRect(targetHeight, targetWidth))) {
-                        bestApprox.delete();
-                        src.delete(); dst.delete(); gray.delete(); blurred.delete(); edges.delete();
-                        contours.delete(); hierarchy.delete(); morph.delete(); kernel.delete();
-                        return resolve(null);
-                    }
-
                     const outputRatio = maxWidth > 0 && maxHeight > 0 ? Math.min(maxWidth, maxHeight) / Math.max(maxWidth, maxHeight) : 0;
                     const ratioDelta = Math.abs(outputRatio - targetRatio);
-                    const targetWidth = Math.max(1, Math.round(maxWidth));
-                    const targetHeight = Math.max(1, Math.round(maxHeight));
-                    const warpArea = targetWidth * targetHeight;
 
                     if (ratioDelta <= ratioTolerance && warpArea >= (src.cols * src.rows) * 0.08) {
                         const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
@@ -270,14 +258,13 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
  * Performs a manual perspective crop based on the provided normalized quadrilateral points (0-1).
  */
 export const performPerspectiveWarp = async (base64Image: string, points: {x: number, y: number}[]): Promise<string> => {
+    const cv = await loadOpenCv();
+
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-            // @ts-ignore
-            if (typeof window !== 'undefined' && window.cv && window.cvLoaded) {
+            if (cv) {
                 try {
-                    // @ts-ignore
-                    const cv = window.cv;
                     const src = cv.imread(img);
                     
                     // Convert relative points to absolute pixel coordinates

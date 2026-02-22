@@ -106,7 +106,7 @@ export const CardRecognitionService = {
         
         // Clean up OCR spacing & Common Char replacements (O->0, I->1, etc)
         let rawId = (ocrResult.normalized || '').replace(/\s+/g, '').toUpperCase();
-        rawId = rawId.replace(/[\\|]/g, '/').replace(/[^A-Z0-9\/-]/g, '');
+        rawId = rawId.replace(/[\|]/g, '/').replace(/[^A-Z0-9\/-]/g, '');
         
         // Heuristic character fix for numbers (often OCR reads 058 as O58)
         rawId = rawId.replace(/O/g, '0').replace(/[Il]/g, '1');
