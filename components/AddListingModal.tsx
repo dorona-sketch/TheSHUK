@@ -36,6 +36,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
   // TEMP: Only used for Manual Crop logic, never persisted or shown in final form
   const [tempOriginalImage, setTempOriginalImage] = useState<string | null>(null);
   const [isManualCropping, setIsManualCropping] = useState(false);
+  const [showCameraGuide, setShowCameraGuide] = useState(false);
   
   // The only image we persist
   const [croppedImage, setCroppedImage] = useState<string | null>(null);
@@ -185,6 +186,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
               setOpenedProduct({ type: SealedProductType.ETB, setId: '', setName: '', productName: '', quantity: 1, language: 'English', estimatedValue: 45 });
               setIsProductNameManuallyEdited(false);
               setErrors({});
+              setShowCameraGuide(false);
           }
       }
   }, [isOpen, initialData]);
@@ -292,10 +294,11 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                   // 1. Auto Crop
                   setProcessingStatus('Auto-cropping card...');
                   const croppedBase64 = await autoCropCard(rawBase64);
-                  
+                  const targetMime = mime || 'image/jpeg';
+
                   if (!croppedBase64) {
                       if (!geminiReady) {
-                          setProcessingStatus('Auto-crop could not detect a card. Please retake with better lighting or use Gallery.');
+                          setProcessingStatus('Auto-crop could not detect a card. Please center the card inside the green guide and retake.');
                           setCurrentStep('EDIT_DETAILS');
                           setCroppedImage(fullDataUrl);
                           return;
@@ -307,13 +310,13 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                       return; // Halt pipeline here, waiting for manual crop
                   }
 
-                  const croppedUrl = `data:${mime};base64,${croppedBase64}`;
+                  const croppedUrl = `data:${targetMime};base64,${croppedBase64}`;
                   setCroppedImage(croppedUrl);
 
                   // 2. Identify
                   setProcessingStatus('Identifying card...');
                   // We pass the already cropped base64 to recognition
-                  const res = await CardRecognitionService.identify(croppedBase64, mime);
+                  const res = await CardRecognitionService.identify(croppedBase64, targetMime);
                   
                   if (res.candidates.length > 0) {
                       setCandidates(res.candidates);
@@ -389,6 +392,13 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
           tcgCardId: c.id || ''
       }));
       setSelectedCandidate(c);
+  };
+
+  const openCameraWithGuide = () => setShowCameraGuide(true);
+
+  const launchCameraCapture = () => {
+      setShowCameraGuide(false);
+      cameraInputRef.current?.click();
   };
 
   const handleStandardFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -550,6 +560,22 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
   return (
     <>
+    {showCameraGuide && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center px-6">
+            <div className="w-full max-w-sm bg-white rounded-2xl p-5 text-center">
+                <h4 className="text-lg font-bold text-gray-900">Card Capture Guide</h4>
+                <p className="text-sm text-gray-600 mt-1">Center the card inside the green square before taking the photo.</p>
+                <div className="relative w-56 h-80 mx-auto my-4">
+                    <div className="absolute inset-0 border-4 border-emerald-500 rounded-2xl"></div>
+                </div>
+                <div className="flex gap-2">
+                    <button type="button" onClick={() => setShowCameraGuide(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold">Cancel</button>
+                    <button type="button" onClick={launchCameraCapture} className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold">Open Camera</button>
+                </div>
+            </div>
+        </div>
+    )}
+
     {isManualCropping && tempOriginalImage && (
         <ImageCropper 
             imageSrc={tempOriginalImage} 
@@ -578,14 +604,18 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
                 {/* --- STEP 1: UPLOAD (Only for Singles/Auctions) --- */}
                 {currentStep === 'UPLOAD' && formData.type !== ListingType.TIMED_BREAK && (
-                    <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors p-10" onClick={() => cameraInputRef.current?.click()}>
+                    <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors p-10" onClick={openCameraWithGuide}>
                         <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
                             <svg className="w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         </div>
                         <h4 className="text-lg font-bold text-gray-900 mb-1">Upload Card Photo</h4>
                         <p className="text-sm text-gray-500 mb-4 text-center max-w-xs">We'll automatically crop and perspective-correct your card image.</p>
+                        <div className="relative w-52 h-72 mb-4">
+                            <div className="absolute inset-0 border-4 border-emerald-500 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.08)]"></div>
+                            <div className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-emerald-700 bg-emerald-50/70 rounded-2xl">Align card inside green box</div>
+                        </div>
                         <div className="flex gap-2">
-                            <button type="button" onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }} className="px-5 py-2 bg-gray-900 text-white font-bold rounded-full text-sm">Use Camera</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); openCameraWithGuide(); }} className="px-5 py-2 bg-gray-900 text-white font-bold rounded-full text-sm">Use Camera</button>
                             <button type="button" onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }} className="px-5 py-2 bg-white border border-gray-300 text-gray-800 font-bold rounded-full text-sm">From Gallery</button>
                         </div>
                         <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
@@ -653,7 +683,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                 <div className="space-y-4">
                                     <div 
                                         className="aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden relative border border-gray-200 group cursor-pointer"
-                                        onClick={() => cameraInputRef.current?.click()}
+                                        onClick={openCameraWithGuide}
                                     >
                                         <img src={croppedImage || ''} className="w-full h-full object-contain" />
                                         
@@ -677,7 +707,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                     <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
                                     <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
                                     <div className="flex items-center justify-center gap-2">
-                                        <button type="button" onClick={() => cameraInputRef.current?.click()} className="text-xs px-2 py-1 rounded bg-gray-900 text-white">Camera</button>
+                                        <button type="button" onClick={openCameraWithGuide} className="text-xs px-2 py-1 rounded bg-gray-900 text-white">Camera</button>
                                         <button type="button" onClick={() => galleryInputRef.current?.click()} className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700">Gallery</button>
                                     </div>
                                     <div className="text-xs text-gray-400 text-center">
@@ -832,7 +862,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                         <div className="md:col-span-1">
                                             <label className="block text-xs font-bold text-purple-800 mb-1">Cover Image <span className="text-red-500">*</span></label>
-                                            <div className="aspect-[4/3] bg-white border-2 border-dashed border-purple-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-purple-50 transition-colors relative overflow-hidden" onClick={() => cameraInputRef.current?.click()}>
+                                            <div className="aspect-[4/3] bg-white border-2 border-dashed border-purple-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-purple-50 transition-colors relative overflow-hidden" onClick={openCameraWithGuide}>
                                                 {croppedImage ? <img src={croppedImage} className="w-full h-full object-cover" /> : (
                                                     <>
                                                         <span className="text-2xl text-purple-300 mb-1">+</span>
@@ -842,7 +872,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                                 <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} required />
                                                 <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
                                                 <div className="absolute bottom-2 left-2 right-2 flex gap-2 justify-center">
-                                                    <button type="button" onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }} className="text-[10px] px-2 py-1 rounded bg-purple-700 text-white">Camera</button>
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); openCameraWithGuide(); }} className="text-[10px] px-2 py-1 rounded bg-purple-700 text-white">Camera</button>
                                                     <button type="button" onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }} className="text-[10px] px-2 py-1 rounded bg-white border border-purple-200 text-purple-700">Gallery</button>
                                                 </div>
                                             </div>
