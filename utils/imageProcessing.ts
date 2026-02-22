@@ -1,3 +1,4 @@
+import { loadOpenCv } from './opencvLoader';
 
 // Utility to crop specific corners from a base64 or Image source
 export const cropImageCorners = async (base64Image: string): Promise<{ leftCorner: string, rightCorner: string }> => {
@@ -61,18 +62,17 @@ function orderPoints(pts: {x:number, y:number}[]) {
  * Returns null if no card is reliably detected, signaling a fallback to manual crop.
  */
 export const autoCropCard = async (base64Image: string): Promise<string | null> => {
-    return new Promise((resolve) => {
-        // @ts-ignore
-        if (typeof window === 'undefined' || !window.cv || !window.cvLoaded) {
-            console.warn("OpenCV not ready, skipping auto-crop");
-            return resolve(null);
-        }
+    const cv = await loadOpenCv();
 
+    if (!cv) {
+        console.warn('OpenCV not available, skipping auto-crop');
+        return null;
+    }
+
+    return new Promise((resolve) => {
         const img = new Image();
         img.onload = () => {
             try {
-                // @ts-ignore
-                const cv = window.cv;
                 const src = cv.imread(img);
 
                 const dsize = new cv.Size(0, 0);
@@ -270,14 +270,13 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
  * Performs a manual perspective crop based on the provided normalized quadrilateral points (0-1).
  */
 export const performPerspectiveWarp = async (base64Image: string, points: {x: number, y: number}[]): Promise<string> => {
+    const cv = await loadOpenCv();
+
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-            // @ts-ignore
-            if (typeof window !== 'undefined' && window.cv && window.cvLoaded) {
+            if (cv) {
                 try {
-                    // @ts-ignore
-                    const cv = window.cv;
                     const src = cv.imread(img);
                     
                     // Convert relative points to absolute pixel coordinates
