@@ -26,7 +26,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Present scanner only if the scanner module is integrated; otherwise no-op
         if let ScannerType = NSClassFromString("CardScannerViewController") as? UIViewController.Type {
             let scanner = ScannerType.init()
-            (scanner as? NSObject)?.setValue(self, forKey: "delegate")
+            let scannerObject = scanner as NSObject
+            scannerObject.setValue(self, forKey: "delegate")
             root.present(scanner, animated: true)
         }
         #endif
@@ -57,3 +58,4 @@ extension SceneDelegate /*: CardScannerViewControllerDelegate*/ {
 #endif
 
 #endif
+
