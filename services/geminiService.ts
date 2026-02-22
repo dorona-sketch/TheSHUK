@@ -6,11 +6,16 @@ export const isGeminiConfigured = (): boolean => {
   return !!(getEnv('GEMINI_API_KEY') || getEnv('API_KEY'));
 };
 
+let didWarnMissingKey = false;
+
 const getClient = () => {
   const apiKey = getEnv('GEMINI_API_KEY') || getEnv('API_KEY');
   
   if (!apiKey) {
-    console.warn("Gemini API key missing (set VITE_GEMINI_API_KEY). AI features will return mock data.");
+    if (!didWarnMissingKey) {
+      console.warn("Gemini API key missing (set VITE_GEMINI_API_KEY). AI features will return mock data.");
+      didWarnMissingKey = true;
+    }
     return null;
   }
   return new GoogleGenAI({ apiKey });
