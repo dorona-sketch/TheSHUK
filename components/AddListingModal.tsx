@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ListingType, Condition, Language, ProductCategory, GradingCompany, SealedProductType, PokemonType, CardCategory, VariantTag, Listing, BreakPrize, OpenedProduct, Valuation, CardCandidate, CardTypeTag, CategoryTag } from '../types';
 import { CardRecognitionService } from '../services/cardRecognitionService';
+import { isGeminiConfigured } from '../services/geminiService';
 import { estimateOpenedProductValue } from '../services/valuationService';
 import { getCardPrice } from '../services/tcgApiService';
 import { useStore } from '../context/StoreContext';
@@ -26,9 +27,11 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
   // State Machine
   const [currentStep, setCurrentStep] = useState<Step>('UPLOAD');
   const [processingStatus, setProcessingStatus] = useState('');
+  const geminiReady = useMemo(() => isGeminiConfigured(), []);
 
   // Image Data
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   
   // TEMP: Only used for Manual Crop logic, never persisted or shown in final form
   const [tempOriginalImage, setTempOriginalImage] = useState<string | null>(null);
@@ -63,7 +66,8 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
   const [newPrizeBase64, setNewPrizeBase64] = useState<string | null>(null);
   const [prizeIdentifying, setPrizeIdentifying] = useState(false);
   const [prizeCandidates, setPrizeCandidates] = useState<CardCandidate[]>([]);
-  const prizeInputRef = useRef<HTMLInputElement>(null);
+  const prizeCameraInputRef = useRef<HTMLInputElement>(null);
+  const prizeGalleryInputRef = useRef<HTMLInputElement>(null);
   
   // Break Content Images
   const [contentImages, setContentImages] = useState<string[]>([]);
@@ -263,6 +267,15 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       }
   };
 
+  const shouldAutoApplyCandidate = (results: CardCandidate[]) => {
+      if (results.length === 0) return false;
+      if (results.length === 1) return true;
+      const [first, second] = results;
+      const top = first.confidence || 0;
+      const gap = top - (second?.confidence || 0);
+      return top >= 0.82 || (top >= 0.72 && gap >= 0.08);
+  };
+
   const processUploadedImage = async (file: File) => {
       const reader = new FileReader();
       reader.onloadend = async () => {
@@ -298,14 +311,14 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                   
                   if (res.candidates.length > 0) {
                       setCandidates(res.candidates);
-                      if (res.candidates.length === 1 || res.candidates[0].confidence > 0.8) {
+                      if (shouldAutoApplyCandidate(res.candidates)) {
                           applyCandidate(res.candidates[0]);
                           setCurrentStep('EDIT_DETAILS');
                       } else {
                           setCurrentStep('REVIEW');
                       }
                   } else {
-                      // Fallback to manual entry
+                      setProcessingStatus(geminiReady ? 'Could not identify card from ID. Please choose manually.' : 'Could not identify card: Gemini key missing (set VITE_GEMINI_API_KEY).');
                       setCurrentStep('EDIT_DETAILS');
                   }
               } catch (e) {
@@ -337,7 +350,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
           
           if (res.candidates.length > 0) {
               setCandidates(res.candidates);
-              if (res.candidates.length === 1 || res.candidates[0].confidence > 0.8) {
+              if (shouldAutoApplyCandidate(res.candidates)) {
                   applyCandidate(res.candidates[0]);
                   setCurrentStep('EDIT_DETAILS');
               } else {
@@ -559,14 +572,18 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
                 {/* --- STEP 1: UPLOAD (Only for Singles/Auctions) --- */}
                 {currentStep === 'UPLOAD' && formData.type !== ListingType.TIMED_BREAK && (
-                    <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors p-10" onClick={() => fileInputRef.current?.click()}>
+                    <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors p-10" onClick={() => cameraInputRef.current?.click()}>
                         <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
                             <svg className="w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         </div>
                         <h4 className="text-lg font-bold text-gray-900 mb-1">Upload Card Photo</h4>
                         <p className="text-sm text-gray-500 mb-4 text-center max-w-xs">We'll automatically crop and perspective-correct your card image.</p>
-                        <button type="button" className="px-6 py-2 bg-gray-900 text-white font-bold rounded-full text-sm">Select Image</button>
-                        <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
+                        <div className="flex gap-2">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }} className="px-5 py-2 bg-gray-900 text-white font-bold rounded-full text-sm">Use Camera</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }} className="px-5 py-2 bg-white border border-gray-300 text-gray-800 font-bold rounded-full text-sm">From Gallery</button>
+                        </div>
+                        <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
+                        <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
                     </div>
                 )}
 
@@ -630,7 +647,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                 <div className="space-y-4">
                                     <div 
                                         className="aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden relative border border-gray-200 group cursor-pointer"
-                                        onClick={() => fileInputRef.current?.click()}
+                                        onClick={() => cameraInputRef.current?.click()}
                                     >
                                         <img src={croppedImage || ''} className="w-full h-full object-contain" />
                                         
@@ -651,7 +668,12 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                             )}
                                         </div>
                                     </div>
-                                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
+                                    <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
+                                    <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                                    <div className="flex items-center justify-center gap-2">
+                                        <button type="button" onClick={() => cameraInputRef.current?.click()} className="text-xs px-2 py-1 rounded bg-gray-900 text-white">Camera</button>
+                                        <button type="button" onClick={() => galleryInputRef.current?.click()} className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700">Gallery</button>
+                                    </div>
                                     <div className="text-xs text-gray-400 text-center">
                                         Click image to replace.
                                     </div>
@@ -804,14 +826,19 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                         <div className="md:col-span-1">
                                             <label className="block text-xs font-bold text-purple-800 mb-1">Cover Image <span className="text-red-500">*</span></label>
-                                            <div className="aspect-[4/3] bg-white border-2 border-dashed border-purple-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-purple-50 transition-colors relative overflow-hidden" onClick={() => fileInputRef.current?.click()}>
+                                            <div className="aspect-[4/3] bg-white border-2 border-dashed border-purple-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-purple-50 transition-colors relative overflow-hidden" onClick={() => cameraInputRef.current?.click()}>
                                                 {croppedImage ? <img src={croppedImage} className="w-full h-full object-cover" /> : (
                                                     <>
                                                         <span className="text-2xl text-purple-300 mb-1">+</span>
                                                         <span className="text-xs text-purple-400 font-medium">Add Photo</span>
                                                     </>
                                                 )}
-                                                <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} required />
+                                                <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} required />
+                                                <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                                                <div className="absolute bottom-2 left-2 right-2 flex gap-2 justify-center">
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }} className="text-[10px] px-2 py-1 rounded bg-purple-700 text-white">Camera</button>
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }} className="text-[10px] px-2 py-1 rounded bg-white border border-purple-200 text-purple-700">Gallery</button>
+                                                </div>
                                             </div>
                                         </div>
 
@@ -886,9 +913,14 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                         ))}
                                         <div className="flex flex-col gap-3 mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200 border-dashed relative">
                                             <div className="flex flex-col sm:flex-row gap-3">
-                                                <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-white transition-colors shrink-0 bg-white overflow-hidden relative" onClick={() => prizeInputRef.current?.click()}>
+                                                <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-white transition-colors shrink-0 bg-white overflow-hidden relative" onClick={() => prizeCameraInputRef.current?.click()}>
                                                     {newPrizeImage ? <img src={newPrizeImage} className="w-full h-full object-cover" /> : <span className="text-xs text-gray-400 text-center">+Img</span>}
-                                                    <input ref={prizeInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePrizeFile} />
+                                                    <input ref={prizeCameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePrizeFile} />
+                                                    <input ref={prizeGalleryInputRef} type="file" className="hidden" accept="image/*" onChange={handlePrizeFile} />
+                                                    <div className="absolute bottom-0 left-0 right-0 flex">
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); prizeCameraInputRef.current?.click(); }} className="text-[9px] w-1/2 bg-black/60 text-white">Cam</button>
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); prizeGalleryInputRef.current?.click(); }} className="text-[9px] w-1/2 bg-white/90 text-gray-700">Gal</button>
+                                                    </div>
                                                 </div>
                                                 <div className="flex-1 space-y-2">
                                                     <div className="flex gap-2">
