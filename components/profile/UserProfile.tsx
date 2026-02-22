@@ -59,7 +59,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ user: initialUser, isO
     };
 
     const handleLogout = async () => {
-        if(confirm("Log out of PokeVault?")) await logout();
+        if(confirm("Log out of Break-Hit?")) await logout();
     };
 
     const handleTopUp = async () => {

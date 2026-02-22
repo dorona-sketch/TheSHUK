@@ -43,17 +43,17 @@ export const CombinedSplitView: React.FC<CombinedSplitViewProps> = ({ onNavigate
         if (isHidden) return null;
 
         return (
-            <div className={`flex flex-col h-1/2 md:h-full transition-all duration-300 ${isExpanded ? 'w-full h-full' : 'w-full md:w-1/2'} border-b md:border-b-0 md:border-r border-shuk-border last:border-0 bg-shuk-dark`}>
+            <div className={`flex flex-col h-1/2 md:h-full transition-all duration-300 ${isExpanded ? 'w-full h-full' : 'w-full md:w-1/2'} border-b md:border-b-0 md:border-r border-breakhit-border last:border-0 bg-breakhit-dark`}>
                 {/* Fixed Header */}
-                <div className="p-3 border-b border-shuk-border bg-shuk-surface flex justify-between items-center shrink-0 h-14">
+                <div className="p-3 border-b border-breakhit-border bg-breakhit-surface flex justify-between items-center shrink-0 h-14">
                     <div className="flex items-center gap-2 overflow-hidden">
                         <span className="text-lg">{type === 'MARKET' ? '🛍️' : '📺'}</span>
-                        <h2 className="font-bold text-shuk-silver text-sm uppercase tracking-wider truncate">{title}</h2>
-                        <span className="text-[10px] text-shuk-muted bg-shuk-dark px-1.5 py-0.5 rounded border border-shuk-border">{items.length}</span>
+                        <h2 className="font-bold text-breakhit-silver text-sm uppercase tracking-wider truncate">{title}</h2>
+                        <span className="text-[10px] text-breakhit-muted bg-breakhit-dark px-1.5 py-0.5 rounded border border-breakhit-border">{items.length}</span>
                     </div>
                     <button 
                         onClick={() => setExpandedPanel(isExpanded ? null : type)}
-                        className="text-shuk-primary hover:text-white p-1.5 rounded hover:bg-shuk-border transition-colors focus:outline-none focus:ring-2 focus:ring-shuk-primary"
+                        className="text-breakhit-primary hover:text-white p-1.5 rounded hover:bg-breakhit-border transition-colors focus:outline-none focus:ring-2 focus:ring-breakhit-primary"
                         title={isExpanded ? "Collapse" : "Expand"}
                         aria-label={isExpanded ? `Collapse ${title}` : `Expand ${title}`}
                     >
@@ -69,7 +69,7 @@ export const CombinedSplitView: React.FC<CombinedSplitViewProps> = ({ onNavigate
                 {/* Independent Scroll Container */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-3">
                     {items.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-40 text-shuk-muted text-xs text-center border-2 border-dashed border-shuk-border rounded-lg m-2">
+                        <div className="flex flex-col items-center justify-center h-40 text-breakhit-muted text-xs text-center border-2 border-dashed border-breakhit-border rounded-lg m-2">
                             <p>No listings found.</p>
                         </div>
                     ) : (
@@ -96,7 +96,7 @@ export const CombinedSplitView: React.FC<CombinedSplitViewProps> = ({ onNavigate
 
     return (
         // Flex column on mobile, row on desktop
-        <div className="flex flex-col md:flex-row w-full h-full overflow-hidden bg-shuk-dark">
+        <div className="flex flex-col md:flex-row w-full h-full overflow-hidden bg-breakhit-dark">
             {renderColumn("Marketplace", marketListings, 'MARKET')}
             {renderColumn("Live Breaks", breakListings, 'BREAKS')}
         </div>

@@ -2,7 +2,7 @@
 // Robust storage utility to handle Date serialization/deserialization
 
 const CURRENT_SCHEMA_VERSION = 3; // Increment this when breaking changes occur
-const SCHEMA_KEY = 'pokevault_schema_version';
+const SCHEMA_KEY = 'break-hit_schema_version';
 
 export const saveToStorage = (key: string, value: any) => {
     try {
@@ -25,7 +25,7 @@ export const loadFromStorage = <T>(key: string, defaultValue: T): T => {
             console.warn("Detected old schema version. Migrating or Resetting...");
             // For MVP, a simple strategy is to wipe complex data if version mismatches to prevent crashes
             // In production, we would write specific migration functions here.
-            if (key === 'pokevault_listings' || key === 'pokevault_break_entries') {
+            if (key === 'break-hit_listings' || key === 'break-hit_break_entries') {
                 return defaultValue; 
             }
         }

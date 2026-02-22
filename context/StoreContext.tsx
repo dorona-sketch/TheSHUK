@@ -97,6 +97,7 @@ interface StoreContextType {
     
     // Queries
     getEndingSoonAuctions: (limit: number) => Listing[];
+    getEndingSoonSales: (limit: number) => Listing[];
     getRelatedListings: (listing: Listing) => Listing[];
     
     // Verification
@@ -160,6 +161,7 @@ export const StoreProvider = ({ children }: PropsWithChildren<{}>) => {
         buyNow: marketplaceStore.buyNow,
         getBidsByListingId: marketplaceStore.getBidsByListingId,
         getEndingSoonAuctions: marketplaceStore.getEndingSoonAuctions,
+        getEndingSoonSales: marketplaceStore.getEndingSoonSales,
         getRelatedListings: marketplaceStore.getRelatedListings,
 
         // Breaks State & Actions

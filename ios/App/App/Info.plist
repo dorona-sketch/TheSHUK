@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>The Digital Shuk</string>
+	<string>Break-Hit</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -25,11 +25,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>The Digital Shuk uses your camera so you can take photos for listings, profile images, and break prizes.</string>
+	<string>Break-Hit uses your camera so you can take photos for listings, profile images, and break prizes.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>The Digital Shuk uses your location to quickly fill your profile location while you use the app.</string>
+	<string>Break-Hit uses your location to quickly fill your profile location while you use the app.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>The Digital Shuk needs photo library access so you can select images for listings and your profile.</string>
+	<string>Break-Hit needs photo library access so you can select images for listings and your profile.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

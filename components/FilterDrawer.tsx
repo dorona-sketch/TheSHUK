@@ -46,39 +46,6 @@ const ERA_ORDER = [
     'Scarlet & Violet'
 ] as const;
 
-const getPokemonEra = (releaseDate?: string) => {
-    const year = releaseDate ? parseInt(releaseDate.slice(0, 4), 10) : NaN;
-    if (Number.isNaN(year)) return '';
-    if (year <= 2002) return 'Vintage (WOTC)';
-    if (year <= 2006) return 'EX Era';
-    if (year <= 2010) return 'Diamond & Pearl';
-    if (year <= 2013) return 'Black & White';
-    if (year <= 2016) return 'XY';
-    if (year <= 2019) return 'Sun & Moon';
-    if (year <= 2022) return 'Sword & Shield';
-    return 'Scarlet & Violet';
-};
-
-const normalizeSearchText = (value: string) => {
-    let text = value.toLowerCase();
-    const synonymMap: Record<string, string> = {
-        'zard': 'charizard',
-        'pika': 'pikachu',
-        'nm': 'near mint',
-        'lp': 'light played',
-        'mp': 'moderately played',
-        'hp': 'heavily played',
-        '1st ed': 'first edition',
-        'fa': 'full art',
-        'aa': 'alternate art'
-    };
-    Object.entries(synonymMap).forEach(([from, to]) => {
-        text = text.replace(new RegExp(`\\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g'), to);
-        text = text.replace(new RegExp(`\b${from.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&')}\b`, 'g'), to);
-    });
-    return text;
-};
-
 
 export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) => {
   const { filters, setFilter, sortOption, setSortOption, resetFilters, getSuggestions, appMode, availableSets, listings } = useStore();
@@ -237,7 +204,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
 
   useEffect(() => {
       try {
-          const raw = localStorage.getItem('shuk_filter_presets');
+          const raw = localStorage.getItem('breakhit_filter_presets');
           if (raw) setSavedPresets(JSON.parse(raw));
       } catch (e) {
           console.warn('Could not load presets', e);
@@ -550,7 +517,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                     };
                                     const next = [...savedPresets.filter(p => p.name !== name), { name, data }];
                                     setSavedPresets(next);
-                                    localStorage.setItem('shuk_filter_presets', JSON.stringify(next));
+                                    localStorage.setItem('breakhit_filter_presets', JSON.stringify(next));
                                     setPresetNameInput('');
                                 }}
                                 className="text-xs text-primary-600 font-semibold hover:underline"
@@ -590,7 +557,7 @@ export const FilterDrawer: React.FC<FilterDrawerProps> = ({ isOpen, onClose }) =
                                 <button type="button" className="text-xs text-red-500" onClick={() => {
                                     const next = savedPresets.filter(x => x.name !== preset.name);
                                     setSavedPresets(next);
-                                    localStorage.setItem('shuk_filter_presets', JSON.stringify(next));
+                                    localStorage.setItem('breakhit_filter_presets', JSON.stringify(next));
                                 }}>✕</button>
                             </div>
                         ))}

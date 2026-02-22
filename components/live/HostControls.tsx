@@ -23,6 +23,7 @@ export const HostControls: React.FC<HostControlsProps> = ({ listing, entries }) 
     const [reviewData, setReviewData] = useState<ReviewData | null>(null);
     const [candidates, setCandidates] = useState<CardCandidate[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [showCameraGuide, setShowCameraGuide] = useState(false);
 
     const processFile = async (file: File) => {
         setIsProcessing(true);
@@ -100,17 +101,43 @@ export const HostControls: React.FC<HostControlsProps> = ({ listing, entries }) 
         publishLiveEvent(listing.id, LiveEventType.RANDOMIZE_LIST, { order: shuffled });
     };
 
+    const openCameraWithGuide = () => setShowCameraGuide(true);
+
+    const launchCameraCapture = () => {
+        setShowCameraGuide(false);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+            fileInputRef.current.click();
+        }
+    };
+
     return (
         <div className="bg-gray-900 border-t border-gray-800 p-4">
+            {showCameraGuide && (
+                <div className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-6">
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-5 text-center">
+                        <h4 className="text-lg font-bold text-gray-900 mb-2">Center the card</h4>
+                        <p className="text-sm text-gray-600 mb-4">Keep the full card inside the green frame before taking the photo.</p>
+                        <div className="mx-auto relative w-52 h-72 mb-5">
+                            <div className="absolute inset-0 border-4 border-emerald-500 rounded-2xl"></div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button type="button" onClick={() => setShowCameraGuide(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold">Cancel</button>
+                            <button type="button" onClick={launchCameraCapture} className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold">Open Camera</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex justify-between mb-3">
                 <h3 className="text-gray-400 text-xs font-bold uppercase">Host Controls</h3>
                 {isProcessing && <span className="text-yellow-400 text-xs animate-pulse">{processingStage}</span>}
             </div>
             
             <div className="grid grid-cols-3 gap-2 mb-4">
-                <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-blue-900 text-blue-100 rounded-lg flex flex-col items-center">
+                <button onClick={openCameraWithGuide} className="p-3 bg-blue-900 text-blue-100 rounded-lg flex flex-col items-center">
                     <span className="text-xl">📸</span><span className="text-[10px] font-bold">Scan Hit</span>
-                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} />
+                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} />
                 </button>
                 <button onClick={handleWheelSpin} className="p-3 bg-purple-900 text-purple-100 rounded-lg flex flex-col items-center">
                     <span className="text-xl">🎡</span><span className="text-[10px] font-bold">Spin Wheel</span>

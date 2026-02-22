@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const ShukLogo: React.FC<{ className?: string }> = ({ className = "h-8 w-8" }) => (
+export const BreakHitLogo: React.FC<{ className?: string }> = ({ className = "h-8 w-8" }) => (
   <svg className={className} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
     {/* Geometric Roof / Market Stall shape inspired by card chevron */}
     <path d="M50 15L15 40H85L50 15Z" fill="url(#grad1)" stroke="#22d3ee" strokeWidth="2" />
