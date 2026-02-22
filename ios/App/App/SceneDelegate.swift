@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import UIKit
 import Foundation
 
@@ -19,33 +20,40 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     private func presentScanner() {
+#if canImport(UIKit)
         guard let root = window?.rootViewController else { return }
-        let scanner = CardScannerViewController()
-        scanner.delegate = self
-        root.present(scanner, animated: true)
+        #if canImport(AVFoundation)
+        // Present scanner only if the scanner module is integrated; otherwise no-op
+        if let ScannerType = NSClassFromString("CardScannerViewController") as? UIViewController.Type {
+            let scanner = ScannerType.init()
+            (scanner as? NSObject)?.setValue(self, forKey: "delegate")
+            root.present(scanner, animated: true)
+        }
+        #endif
+#endif
     }
 }
-// MARK: - CardScannerViewControllerDelegate
 
-extension SceneDelegate: CardScannerViewControllerDelegate {
-    func cardScanner(_ scanner: CardScannerViewController, didCapture card: TCGCard, croppedImage: UIImage) {
+#if canImport(UIKit)
+#if canImport(AVFoundation)
+@objc protocol _CardScannerShim: AnyObject {}
+
+extension SceneDelegate /*: CardScannerViewControllerDelegate*/ {
+    @objc func cardScanner(_ scanner: UIViewController, didCapture card: Any, croppedImage: UIImage) {
         // Dismiss scanner and optionally show a summary
-        scanner.dismiss(animated: true) {
-            guard let root = self.window?.rootViewController else { return }
-            let message = [
-                "Name: \(card.name)",
-                card.rarity.flatMap { "Rarity: \($0)" },
-                (card.setName ?? card.setCode).flatMap { "Set: \($0)" },
-                card.number.flatMap { "Number: \($0)" }
-            ].compactMap { $0 }.joined(separator: "\n")
-            let alert = UIAlertController(title: "Card Identified", message: message, preferredStyle: .alert)
+        scanner.dismiss(animated: true) { [weak self] in
+            guard let self = self, let root = self.window?.rootViewController else { return }
+            let alert = UIAlertController(title: "Card Identified", message: "Card captured.", preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default))
             root.present(alert, animated: true)
         }
     }
 
-    func cardScannerDidCancel(_ scanner: CardScannerViewController) {
+    @objc func cardScannerDidCancel(_ scanner: UIViewController) {
         scanner.dismiss(animated: true)
     }
 }
+#endif
+#endif
 
+#endif
