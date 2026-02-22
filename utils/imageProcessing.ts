@@ -204,6 +204,17 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                     const heightA = Math.hypot(tr.x - br.x, tr.y - br.y);
                     const heightB = Math.hypot(tl.x - bl.x, tl.y - bl.y);
                     const maxHeight = Math.max(heightA, heightB);
+                    const targetWidth = Math.max(1, Math.round(maxWidth));
+                    const targetHeight = Math.max(1, Math.round(maxHeight));
+
+                    // Final sanity checks: card crop should be meaningful and card-like.
+                    const warpArea = targetWidth * targetHeight;
+                    if (warpArea < (src.cols * src.rows) * 0.08 || (!isCardLikeRect(targetWidth, targetHeight) && !isCardLikeRect(targetHeight, targetWidth))) {
+                        bestApprox.delete();
+                        src.delete(); dst.delete(); gray.delete(); blurred.delete(); edges.delete();
+                        contours.delete(); hierarchy.delete(); morph.delete(); kernel.delete();
+                        return resolve(null);
+                    }
 
                     const outputRatio = maxWidth > 0 && maxHeight > 0 ? Math.min(maxWidth, maxHeight) / Math.max(maxWidth, maxHeight) : 0;
                     const ratioDelta = Math.abs(outputRatio - targetRatio);

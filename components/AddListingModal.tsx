@@ -294,6 +294,12 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                   const croppedBase64 = await autoCropCard(rawBase64);
                   
                   if (!croppedBase64) {
+                      if (!geminiReady) {
+                          setProcessingStatus('Auto-crop could not detect a card. Please retake with better lighting or use Gallery.');
+                          setCurrentStep('EDIT_DETAILS');
+                          setCroppedImage(fullDataUrl);
+                          return;
+                      }
                       // Fallback to manual if auto-crop fails
                       console.log("Auto-crop failed, triggering manual crop");
                       setIsManualCropping(true);
