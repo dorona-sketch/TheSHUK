@@ -550,6 +550,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       if (formData.type === ListingType.TIMED_BREAK && (isNaN(spots) || spots < 2)) return alert("Total Spots must be at least 2.");
 
       if (formData.type === ListingType.TIMED_BREAK) {
+          if (!croppedImage) return alert("Please upload a cover image.");
           if (!openedProduct.type) return alert("Product Type is required.");
           if (!openedProduct.setId) return alert("Set / Expansion is required.");
           if (!openedProduct.productName) return alert("Product Name is required.");
@@ -900,8 +901,16 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                                         <span className="text-xs text-purple-400 font-medium">Add Photo</span>
                                                     </>
                                                 )}
-                                                <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} required />
+                                                <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
                                                 <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                                                <input
+                                                    required
+                                                    tabIndex={-1}
+                                                    aria-hidden="true"
+                                                    className="absolute h-0 w-0 opacity-0 pointer-events-none"
+                                                    value={croppedImage ? 'selected' : ''}
+                                                    onChange={() => undefined}
+                                                />
                                                 <div className="absolute bottom-2 left-2 right-2 flex gap-2 justify-center">
                                                     <button type="button" onClick={(e) => { e.stopPropagation(); openCameraWithGuide(); }} className="text-[10px] px-2 py-1 rounded bg-purple-700 text-white">Camera</button>
                                                     <button type="button" onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }} className="text-[10px] px-2 py-1 rounded bg-white border border-purple-200 text-purple-700">Gallery</button>

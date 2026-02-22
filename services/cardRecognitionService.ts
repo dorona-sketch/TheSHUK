@@ -33,7 +33,7 @@ const rankCandidates = (candidates: CardCandidate[], rawId?: string): CardCandid
         const idScore = scoreIdMatch(c.number, rawId);
         const visualScore = c.visualSimilarity ?? 0;
         const baseConfidence = c.confidence ?? 0.6;
-        const confidence = Math.max(baseConfidence, Math.min(0.98, (baseConfidence * 0.45) + (idScore * 0.4) + (visualScore * 0.15)));
+        const confidence = Math.min(0.98, (baseConfidence * 0.45) + (idScore * 0.4) + (visualScore * 0.15));
         return { ...c, confidence };
     });
 
