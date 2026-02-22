@@ -133,7 +133,7 @@ export const SellerOnboarding: React.FC<SellerOnboardingProps> = ({ onComplete, 
         // 5. Trust & Shipping
         <div key="step5" className="space-y-6 text-center">
             <h2 className="text-2xl font-bold text-gray-900">Trust & Fulfillment</h2>
-            <p className="text-gray-600">Key rules for selling on PokeVault.</p>
+            <p className="text-gray-600">Key rules for selling on Break-Hit.</p>
 
             <ul className="text-left space-y-3 bg-blue-50 p-6 rounded-xl text-sm text-blue-900">
                 <li className="flex items-start gap-3">

@@ -74,93 +74,129 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
         img.onload = () => {
             try {
                 const src = cv.imread(img);
-                
-                // Downscale for processing speed but keep enough detail for edge detection
+
                 const dsize = new cv.Size(0, 0);
-                const maxDim = 800;
-                const scale = Math.min(maxDim / src.cols, maxDim / src.rows, 1); 
-                const dst = new cv.Mat();
-                
+                const maxDim = 900;
+                const scale = Math.min(maxDim / src.cols, maxDim / src.rows, 1);
+                const work = new cv.Mat();
+
                 if (scale < 1) {
-                    cv.resize(src, dst, dsize, scale, scale, cv.INTER_AREA);
+                    cv.resize(src, work, dsize, scale, scale, cv.INTER_AREA);
                 } else {
-                    src.copyTo(dst);
+                    src.copyTo(work);
                 }
 
-                // 1. Grayscale
                 const gray = new cv.Mat();
-                cv.cvtColor(dst, gray, cv.COLOR_RGBA2GRAY, 0);
-                
-                // 2. Gaussian Blur (Reduce noise)
+                cv.cvtColor(work, gray, cv.COLOR_RGBA2GRAY, 0);
+
                 const blurred = new cv.Mat();
                 cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-                
-                // 3. Canny Edge Detection
+
                 const edges = new cv.Mat();
-                cv.Canny(blurred, edges, 50, 150); // Tuned thresholds
-                
-                // 4. Morphological Closing (Connect gaps in edges)
-                const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+                cv.Canny(blurred, edges, 40, 130);
+
+                const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
                 const morph = new cv.Mat();
                 cv.morphologyEx(edges, morph, cv.MORPH_CLOSE, kernel);
+                cv.dilate(morph, morph, kernel);
 
-                // 5. Find Contours
                 const contours = new cv.MatVector();
                 const hierarchy = new cv.Mat();
                 cv.findContours(morph, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-                let maxArea = 0;
-                let bestApprox = null;
-                // Minimum area threshold (10% of image)
-                const minArea = (dst.cols * dst.rows) * 0.1;
+                const minArea = (work.cols * work.rows) * 0.06;
+                const targetRatio = 2.5 / 3.5;
+                const ratioTolerance = 0.22;
+
+                const quadFromContour = (cnt: any): any | null => {
+                    const peri = cv.arcLength(cnt, true);
+                    const approx = new cv.Mat();
+                    cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+                    if (approx.rows === 4 && cv.isContourConvex(approx)) return approx;
+                    approx.delete();
+                    return null;
+                };
+
+                const rectPointsMat = (cnt: any): any | null => {
+                    try {
+                        const rotated = cv.minAreaRect(cnt);
+                        if (cv.RotatedRect?.points) {
+                            const pts = cv.RotatedRect.points(rotated);
+                            const arr = [pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y];
+                            return cv.matFromArray(4, 1, cv.CV_32SC2, arr);
+                        }
+                        if (cv.boxPoints) {
+                            const box = new cv.Mat();
+                            cv.boxPoints(rotated, box);
+                            const approx = new cv.Mat();
+                            box.convertTo(approx, cv.CV_32SC2);
+                            box.delete();
+                            return approx;
+                        }
+                    } catch (e) {
+                        return null;
+                    }
+                    return null;
+                };
+
+                const contourScore = (cnt: any, area: number): { score: number; ratioDelta: number } => {
+                    const rect = cv.minAreaRect(cnt);
+                    const w = Math.max(1, rect.size.width);
+                    const h = Math.max(1, rect.size.height);
+                    const ratio = Math.min(w, h) / Math.max(w, h);
+                    const ratioDelta = Math.abs(ratio - targetRatio);
+                    if (ratioDelta > ratioTolerance) return { score: -1, ratioDelta };
+
+                    const rectArea = w * h;
+                    const fill = rectArea > 0 ? area / rectArea : 0;
+                    const normArea = area / (work.cols * work.rows);
+                    const score = (normArea * 2.2) + ((1 - ratioDelta / ratioTolerance) * 1.2) + (Math.min(fill, 1) * 0.8);
+                    return { score, ratioDelta };
+                };
+
+                let bestQuad: any = null;
+                let bestScore = -1;
 
                 for (let i = 0; i < contours.size(); ++i) {
                     const cnt = contours.get(i);
                     const area = cv.contourArea(cnt);
-                    
-                    if (area > minArea) {
-                        const peri = cv.arcLength(cnt, true);
-                        const approx = new cv.Mat();
-                        // Approximate polygon (0.02 epsilon is standard for rectangles)
-                        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
-
-                        // Look for 4 corners and Convex shape
-                        if (approx.rows === 4 && cv.isContourConvex(approx)) {
-                            if (area > maxArea) {
-                                maxArea = area;
-                                if (bestApprox) bestApprox.delete();
-                                bestApprox = approx; // Keep reference to Mat
-                            } else {
-                                approx.delete();
-                            }
-                        } else {
-                            approx.delete();
-                        }
+                    if (area < minArea) {
+                        cnt.delete();
+                        continue;
                     }
+
+                    const scored = contourScore(cnt, area);
+                    if (scored.score < 0) {
+                        cnt.delete();
+                        continue;
+                    }
+
+                    const quad = quadFromContour(cnt) || rectPointsMat(cnt);
+                    if (quad && scored.score > bestScore) {
+                        if (bestQuad) bestQuad.delete();
+                        bestQuad = quad;
+                        bestScore = scored.score;
+                    } else if (quad) {
+                        quad.delete();
+                    }
+
+                    cnt.delete();
                 }
 
                 let resultBase64: string | null = null;
 
-                if (bestApprox) {
-                    // Extract points from best contour approximation
+                if (bestQuad) {
                     const points = [];
-                    for(let i = 0; i < 4; i++) {
+                    for (let i = 0; i < 4; i++) {
                         points.push({
-                            x: bestApprox.data32S[i * 2],
-                            y: bestApprox.data32S[i * 2 + 1]
+                            x: bestQuad.data32S[i * 2],
+                            y: bestQuad.data32S[i * 2 + 1]
                         });
                     }
 
-                    // Scale points back to original image coords
-                    const scaledPoints = points.map(p => ({
-                        x: p.x / scale,
-                        y: p.y / scale
-                    }));
-
-                    // Sort points: TL, TR, BR, BL
+                    const scaledPoints = points.map(p => ({ x: p.x / scale, y: p.y / scale }));
                     const [tl, tr, br, bl] = orderPoints(scaledPoints);
 
-                    // Calculate destination width/height for flattening
                     const widthA = Math.hypot(br.x - bl.x, br.y - bl.y);
                     const widthB = Math.hypot(tr.x - tl.x, tr.y - tl.y);
                     const maxWidth = Math.max(widthA, widthB);
@@ -168,40 +204,54 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                     const heightA = Math.hypot(tr.x - br.x, tr.y - br.y);
                     const heightB = Math.hypot(tl.x - bl.x, tl.y - bl.y);
                     const maxHeight = Math.max(heightA, heightB);
+                    const targetWidth = Math.max(1, Math.round(maxWidth));
+                    const targetHeight = Math.max(1, Math.round(maxHeight));
 
-                    // Destination points (Flat Rectangle)
-                    const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-                        0, 0,
-                        maxWidth, 0,
-                        maxWidth, maxHeight,
-                        0, maxHeight
-                    ]);
+                    // Final sanity checks: card crop should be meaningful and card-like.
+                    const warpArea = targetWidth * targetHeight;
+                    if (warpArea < (src.cols * src.rows) * 0.08 || (!isCardLikeRect(targetWidth, targetHeight) && !isCardLikeRect(targetHeight, targetWidth))) {
+                        bestApprox.delete();
+                        src.delete(); dst.delete(); gray.delete(); blurred.delete(); edges.delete();
+                        contours.delete(); hierarchy.delete(); morph.delete(); kernel.delete();
+                        return resolve(null);
+                    }
 
-                    // Source points
-                    const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-                        tl.x, tl.y,
-                        tr.x, tr.y,
-                        br.x, br.y,
-                        bl.x, bl.y
-                    ]);
+                    const outputRatio = maxWidth > 0 && maxHeight > 0 ? Math.min(maxWidth, maxHeight) / Math.max(maxWidth, maxHeight) : 0;
+                    const ratioDelta = Math.abs(outputRatio - targetRatio);
+                    const targetWidth = Math.max(1, Math.round(maxWidth));
+                    const targetHeight = Math.max(1, Math.round(maxHeight));
+                    const warpArea = targetWidth * targetHeight;
 
-                    // Perspective Warp
-                    const M = cv.getPerspectiveTransform(srcTri, dstTri);
-                    const warped = new cv.Mat();
-                    const dsizeWarp = new cv.Size(maxWidth, maxHeight);
-                    cv.warpPerspective(src, warped, M, dsizeWarp, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+                    if (ratioDelta <= ratioTolerance && warpArea >= (src.cols * src.rows) * 0.08) {
+                        const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                            0, 0,
+                            targetWidth, 0,
+                            targetWidth, targetHeight,
+                            0, targetHeight
+                        ]);
 
-                    // Render to canvas
-                    const canvas = document.createElement('canvas');
-                    cv.imshow(canvas, warped);
-                    resultBase64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+                        const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                            tl.x, tl.y,
+                            tr.x, tr.y,
+                            br.x, br.y,
+                            bl.x, bl.y
+                        ]);
 
-                    // Cleanup
-                    M.delete(); warped.delete(); srcTri.delete(); dstTri.delete(); bestApprox.delete();
+                        const M = cv.getPerspectiveTransform(srcTri, dstTri);
+                        const warped = new cv.Mat();
+                        cv.warpPerspective(src, warped, M, new cv.Size(targetWidth, targetHeight), cv.INTER_LINEAR, cv.BORDER_REPLICATE, new cv.Scalar());
+
+                        const canvas = document.createElement('canvas');
+                        cv.imshow(canvas, warped);
+                        resultBase64 = canvas.toDataURL('image/jpeg', 0.92).split(',')[1];
+
+                        M.delete(); warped.delete(); srcTri.delete(); dstTri.delete();
+                    }
+
+                    bestQuad.delete();
                 }
 
-                // Global cleanup
-                src.delete(); dst.delete(); gray.delete(); blurred.delete(); edges.delete(); 
+                src.delete(); work.delete(); gray.delete(); blurred.delete(); edges.delete();
                 contours.delete(); hierarchy.delete(); morph.delete(); kernel.delete();
 
                 resolve(resultBase64);
@@ -210,6 +260,7 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                 resolve(null);
             }
         };
+
         img.onerror = () => resolve(null);
         img.src = base64Image.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}`;
     });
