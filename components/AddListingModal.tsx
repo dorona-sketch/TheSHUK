@@ -509,6 +509,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       if (formData.type === ListingType.TIMED_BREAK && (isNaN(spots) || spots < 2)) return alert("Total Spots must be at least 2.");
 
       if (formData.type === ListingType.TIMED_BREAK) {
+          if (!croppedImage) return alert("Please upload a cover image.");
           if (!openedProduct.type) return alert("Product Type is required.");
           if (!openedProduct.setId) return alert("Set / Expansion is required.");
           if (!openedProduct.productName) return alert("Product Name is required.");
