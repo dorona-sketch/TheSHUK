@@ -839,8 +839,16 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                                         <span className="text-xs text-purple-400 font-medium">Add Photo</span>
                                                     </>
                                                 )}
-                                                <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} required />
+                                                <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
                                                 <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                                                <input
+                                                    required
+                                                    tabIndex={-1}
+                                                    aria-hidden="true"
+                                                    className="absolute h-0 w-0 opacity-0 pointer-events-none"
+                                                    value={croppedImage ? 'selected' : ''}
+                                                    onChange={() => undefined}
+                                                />
                                                 <div className="absolute bottom-2 left-2 right-2 flex gap-2 justify-center">
                                                     <button type="button" onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }} className="text-[10px] px-2 py-1 rounded bg-purple-700 text-white">Camera</button>
                                                     <button type="button" onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }} className="text-[10px] px-2 py-1 rounded bg-white border border-purple-200 text-purple-700">Gallery</button>
