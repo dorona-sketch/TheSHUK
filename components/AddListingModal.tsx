@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ListingType, Condition, Language, ProductCategory, GradingCompany, SealedProductType, PokemonType, CardCategory, VariantTag, Listing, BreakPrize, OpenedProduct, Valuation, CardCandidate, CardTypeTag, CategoryTag } from '../types';
 import { CardRecognitionService } from '../services/cardRecognitionService';
+import { isGeminiConfigured } from '../services/geminiService';
 import { estimateOpenedProductValue } from '../services/valuationService';
 import { getCardPrice } from '../services/tcgApiService';
 import { useStore } from '../context/StoreContext';
@@ -26,6 +27,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
   // State Machine
   const [currentStep, setCurrentStep] = useState<Step>('UPLOAD');
   const [processingStatus, setProcessingStatus] = useState('');
+  const geminiReady = useMemo(() => isGeminiConfigured(), []);
 
   // Image Data
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -292,6 +294,12 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                   const croppedBase64 = await autoCropCard(rawBase64);
                   
                   if (!croppedBase64) {
+                      if (!geminiReady) {
+                          setProcessingStatus('Auto-crop could not detect a card. Please retake with better lighting or use Gallery.');
+                          setCurrentStep('EDIT_DETAILS');
+                          setCroppedImage(fullDataUrl);
+                          return;
+                      }
                       // Fallback to manual if auto-crop fails
                       console.log("Auto-crop failed, triggering manual crop");
                       setIsManualCropping(true);
@@ -316,7 +324,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                           setCurrentStep('REVIEW');
                       }
                   } else {
-                      // Fallback to manual entry
+                      setProcessingStatus(geminiReady ? 'Could not identify card from ID. Please choose manually.' : 'Could not identify card: Gemini key missing (set VITE_GEMINI_API_KEY).');
                       setCurrentStep('EDIT_DETAILS');
                   }
               } catch (e) {
