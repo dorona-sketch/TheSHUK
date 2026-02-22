@@ -110,9 +110,17 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                 cv.findContours(morph, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
                 let maxArea = 0;
-                let bestApprox = null;
+                let bestApprox: any = null;
                 // Minimum area threshold (10% of image)
                 const minArea = (dst.cols * dst.rows) * 0.1;
+                const maxAspectRatio = 1.65;
+                const minAspectRatio = 0.58;
+
+                const isCardLikeRect = (width: number, height: number) => {
+                    if (width <= 0 || height <= 0) return false;
+                    const ratio = width / height;
+                    return ratio >= minAspectRatio && ratio <= maxAspectRatio;
+                };
 
                 for (let i = 0; i < contours.size(); ++i) {
                     const cnt = contours.get(i);
@@ -126,6 +134,12 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
 
                         // Look for 4 corners and Convex shape
                         if (approx.rows === 4 && cv.isContourConvex(approx)) {
+                            const rect = cv.minAreaRect(approx);
+                            if (!isCardLikeRect(rect.size.width, rect.size.height) && !isCardLikeRect(rect.size.height, rect.size.width)) {
+                                approx.delete();
+                                continue;
+                            }
+
                             if (area > maxArea) {
                                 maxArea = area;
                                 if (bestApprox) bestApprox.delete();
@@ -137,6 +151,8 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                             approx.delete();
                         }
                     }
+
+                    cnt.delete();
                 }
 
                 let resultBase64: string | null = null;
@@ -168,13 +184,24 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                     const heightA = Math.hypot(tr.x - br.x, tr.y - br.y);
                     const heightB = Math.hypot(tl.x - bl.x, tl.y - bl.y);
                     const maxHeight = Math.max(heightA, heightB);
+                    const targetWidth = Math.max(1, Math.round(maxWidth));
+                    const targetHeight = Math.max(1, Math.round(maxHeight));
+
+                    // Final sanity checks: card crop should be meaningful and card-like.
+                    const warpArea = targetWidth * targetHeight;
+                    if (warpArea < (src.cols * src.rows) * 0.08 || (!isCardLikeRect(targetWidth, targetHeight) && !isCardLikeRect(targetHeight, targetWidth))) {
+                        bestApprox.delete();
+                        src.delete(); dst.delete(); gray.delete(); blurred.delete(); edges.delete();
+                        contours.delete(); hierarchy.delete(); morph.delete(); kernel.delete();
+                        return resolve(null);
+                    }
 
                     // Destination points (Flat Rectangle)
                     const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
                         0, 0,
-                        maxWidth, 0,
-                        maxWidth, maxHeight,
-                        0, maxHeight
+                        targetWidth, 0,
+                        targetWidth, targetHeight,
+                        0, targetHeight
                     ]);
 
                     // Source points
@@ -188,7 +215,7 @@ export const autoCropCard = async (base64Image: string): Promise<string | null> 
                     // Perspective Warp
                     const M = cv.getPerspectiveTransform(srcTri, dstTri);
                     const warped = new cv.Mat();
-                    const dsizeWarp = new cv.Size(maxWidth, maxHeight);
+                    const dsizeWarp = new cv.Size(targetWidth, targetHeight);
                     cv.warpPerspective(src, warped, M, dsizeWarp, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
 
                     // Render to canvas
