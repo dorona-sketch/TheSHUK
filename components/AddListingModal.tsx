@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ListingType, Condition, Language, ProductCategory, GradingCompany, SealedProductType, PokemonType, CardCategory, VariantTag, Listing, BreakPrize, OpenedProduct, Valuation, CardCandidate, CardTypeTag, CategoryTag } from '../types';
 import { CardRecognitionService } from '../services/cardRecognitionService';
+import { isGeminiConfigured } from '../services/geminiService';
 import { estimateOpenedProductValue } from '../services/valuationService';
 import { getCardPrice } from '../services/tcgApiService';
 import { useStore } from '../context/StoreContext';
@@ -26,13 +27,41 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
   // State Machine
   const [currentStep, setCurrentStep] = useState<Step>('UPLOAD');
   const [processingStatus, setProcessingStatus] = useState('');
+  const geminiReady = useMemo(() => isGeminiConfigured(), []);
 
   // Image Data
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   
   // TEMP: Only used for Manual Crop logic, never persisted or shown in final form
   const [tempOriginalImage, setTempOriginalImage] = useState<string | null>(null);
   const [isManualCropping, setIsManualCropping] = useState(false);
+  const [showCameraGuide, setShowCameraGuide] = useState(false);
+
+  const normalizeImageForProcessing = async (file: File): Promise<File> => {
+      const isLikelyHeic = /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
+      if (!isLikelyHeic) return file;
+
+      try {
+          const bitmap = await createImageBitmap(file);
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return file;
+          ctx.drawImage(bitmap, 0, 0);
+
+          const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+          bitmap.close();
+          if (!blob) return file;
+
+          const nextName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
+          return new File([blob], nextName, { type: 'image/jpeg', lastModified: Date.now() });
+      } catch (err) {
+          console.warn('HEIC/HEIF conversion failed, falling back to original file', err);
+          return file;
+      }
+  };
   
   // The only image we persist
   const [croppedImage, setCroppedImage] = useState<string | null>(null);
@@ -63,7 +92,8 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
   const [newPrizeBase64, setNewPrizeBase64] = useState<string | null>(null);
   const [prizeIdentifying, setPrizeIdentifying] = useState(false);
   const [prizeCandidates, setPrizeCandidates] = useState<CardCandidate[]>([]);
-  const prizeInputRef = useRef<HTMLInputElement>(null);
+  const prizeCameraInputRef = useRef<HTMLInputElement>(null);
+  const prizeGalleryInputRef = useRef<HTMLInputElement>(null);
   
   // Break Content Images
   const [contentImages, setContentImages] = useState<string[]>([]);
@@ -181,6 +211,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
               setOpenedProduct({ type: SealedProductType.ETB, setId: '', setName: '', productName: '', quantity: 1, language: 'English', estimatedValue: 45 });
               setIsProductNameManuallyEdited(false);
               setErrors({});
+              setShowCameraGuide(false);
           }
       }
   }, [isOpen, initialData]);
@@ -263,6 +294,15 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       }
   };
 
+  const shouldAutoApplyCandidate = (results: CardCandidate[]) => {
+      if (results.length === 0) return false;
+      if (results.length === 1) return true;
+      const [first, second] = results;
+      const top = first.confidence || 0;
+      const gap = top - (second?.confidence || 0);
+      return top >= 0.82 || (top >= 0.72 && gap >= 0.08);
+  };
+
   const processUploadedImage = async (file: File) => {
       const reader = new FileReader();
       reader.onloadend = async () => {
@@ -279,8 +319,15 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                   // 1. Auto Crop
                   setProcessingStatus('Auto-cropping card...');
                   const croppedBase64 = await autoCropCard(rawBase64);
-                  
+                  const targetMime = mime || 'image/jpeg';
+
                   if (!croppedBase64) {
+                      if (!geminiReady) {
+                          setProcessingStatus('Auto-crop could not detect a card. Please center the card inside the green guide and retake.');
+                          setCurrentStep('EDIT_DETAILS');
+                          setCroppedImage(fullDataUrl);
+                          return;
+                      }
                       // Fallback to manual if auto-crop fails
                       console.log("Auto-crop failed, triggering manual crop");
                       setIsManualCropping(true);
@@ -288,24 +335,24 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                       return; // Halt pipeline here, waiting for manual crop
                   }
 
-                  const croppedUrl = `data:${mime};base64,${croppedBase64}`;
+                  const croppedUrl = `data:${targetMime};base64,${croppedBase64}`;
                   setCroppedImage(croppedUrl);
 
                   // 2. Identify
                   setProcessingStatus('Identifying card...');
                   // We pass the already cropped base64 to recognition
-                  const res = await CardRecognitionService.identify(croppedBase64, mime);
+                  const res = await CardRecognitionService.identify(croppedBase64, targetMime);
                   
                   if (res.candidates.length > 0) {
                       setCandidates(res.candidates);
-                      if (res.candidates.length === 1 || res.candidates[0].confidence > 0.8) {
+                      if (shouldAutoApplyCandidate(res.candidates)) {
                           applyCandidate(res.candidates[0]);
                           setCurrentStep('EDIT_DETAILS');
                       } else {
                           setCurrentStep('REVIEW');
                       }
                   } else {
-                      // Fallback to manual entry
+                      setProcessingStatus(geminiReady ? 'Could not identify card from ID. Please choose manually.' : 'Could not identify card: Gemini key missing (set VITE_GEMINI_API_KEY).');
                       setCurrentStep('EDIT_DETAILS');
                   }
               } catch (e) {
@@ -337,7 +384,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
           
           if (res.candidates.length > 0) {
               setCandidates(res.candidates);
-              if (res.candidates.length === 1 || res.candidates[0].confidence > 0.8) {
+              if (shouldAutoApplyCandidate(res.candidates)) {
                   applyCandidate(res.candidates[0]);
                   setCurrentStep('EDIT_DETAILS');
               } else {
@@ -372,9 +419,22 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       setSelectedCandidate(c);
   };
 
+  const openCameraWithGuide = () => setShowCameraGuide(true);
+
+  const launchCameraCapture = () => {
+      setShowCameraGuide(false);
+      if (cameraInputRef.current) {
+          cameraInputRef.current.value = '';
+          cameraInputRef.current.click();
+      }
+  };
+
   const handleStandardFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) processUploadedImage(file);
+      if (file) {
+          normalizeImageForProcessing(file).then(processUploadedImage);
+      }
+      e.target.value = '';
   };
 
   // --- Prize Logic ---
@@ -474,6 +534,8 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
       const price = parseFloat(formData.price);
       if (isNaN(price) || price <= 0) newErrors.price = "Enter a valid price (> 0)";
+      if (formData.type === ListingType.AUCTION && !isNaN(price) && price < 25) newErrors.price = "Opening bid should be at least $25";
+      if (formData.type === ListingType.TIMED_BREAK && !isNaN(price) && price < 50) newErrors.price = "Break entry should be at least $50";
 
       if (formData.type !== ListingType.TIMED_BREAK && !formData.condition && formData.category === ProductCategory.RAW_CARD) {
           newErrors.condition = "Condition is required";
@@ -488,6 +550,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
       if (formData.type === ListingType.TIMED_BREAK && (isNaN(spots) || spots < 2)) return alert("Total Spots must be at least 2.");
 
       if (formData.type === ListingType.TIMED_BREAK) {
+          if (!croppedImage) return alert("Please upload a cover image.");
           if (!openedProduct.type) return alert("Product Type is required.");
           if (!openedProduct.setId) return alert("Set / Expansion is required.");
           if (!openedProduct.productName) return alert("Product Name is required.");
@@ -529,6 +592,22 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
   return (
     <>
+    {showCameraGuide && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center px-6">
+            <div className="w-full max-w-sm bg-white rounded-2xl p-5 text-center">
+                <h4 className="text-lg font-bold text-gray-900">Card Capture Guide</h4>
+                <p className="text-sm text-gray-600 mt-1">Center the card inside the green square before taking the photo.</p>
+                <div className="relative w-56 h-80 mx-auto my-4">
+                    <div className="absolute inset-0 border-4 border-emerald-500 rounded-2xl"></div>
+                </div>
+                <div className="flex gap-2">
+                    <button type="button" onClick={() => setShowCameraGuide(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold">Cancel</button>
+                    <button type="button" onClick={launchCameraCapture} className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold">Open Camera</button>
+                </div>
+            </div>
+        </div>
+    )}
+
     {isManualCropping && tempOriginalImage && (
         <ImageCropper 
             imageSrc={tempOriginalImage} 
@@ -557,14 +636,22 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
 
                 {/* --- STEP 1: UPLOAD (Only for Singles/Auctions) --- */}
                 {currentStep === 'UPLOAD' && formData.type !== ListingType.TIMED_BREAK && (
-                    <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors p-10" onClick={() => fileInputRef.current?.click()}>
+                    <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors p-10" onClick={openCameraWithGuide}>
                         <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
                             <svg className="w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         </div>
                         <h4 className="text-lg font-bold text-gray-900 mb-1">Upload Card Photo</h4>
                         <p className="text-sm text-gray-500 mb-4 text-center max-w-xs">We'll automatically crop and perspective-correct your card image.</p>
-                        <button type="button" className="px-6 py-2 bg-gray-900 text-white font-bold rounded-full text-sm">Select Image</button>
-                        <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
+                        <div className="relative w-52 h-72 mb-4">
+                            <div className="absolute inset-0 border-4 border-emerald-500 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.08)]"></div>
+                            <div className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-emerald-700 bg-emerald-50/70 rounded-2xl">Align card inside green box</div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); openCameraWithGuide(); }} className="px-5 py-2 bg-gray-900 text-white font-bold rounded-full text-sm">Use Camera</button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); if (galleryInputRef.current) { galleryInputRef.current.value = ''; galleryInputRef.current.click(); } }} className="px-5 py-2 bg-white border border-gray-300 text-gray-800 font-bold rounded-full text-sm">From Gallery</button>
+                        </div>
+                        <input ref={cameraInputRef} type="file" className="hidden" accept="image/*,image/heic,image/heif" capture="environment" onChange={handleStandardFileChange} />
+                        <input ref={galleryInputRef} type="file" className="hidden" accept="image/*,image/heic,image/heif" onChange={handleStandardFileChange} />
                     </div>
                 )}
 
@@ -628,7 +715,7 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                 <div className="space-y-4">
                                     <div 
                                         className="aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden relative border border-gray-200 group cursor-pointer"
-                                        onClick={() => fileInputRef.current?.click()}
+                                        onClick={openCameraWithGuide}
                                     >
                                         <img src={croppedImage || ''} className="w-full h-full object-contain" />
                                         
@@ -649,7 +736,12 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                             )}
                                         </div>
                                     </div>
-                                    <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
+                                    <input ref={cameraInputRef} type="file" className="hidden" accept="image/*,image/heic,image/heif" capture="environment" onChange={handleStandardFileChange} />
+                                    <input ref={galleryInputRef} type="file" className="hidden" accept="image/*,image/heic,image/heif" onChange={handleStandardFileChange} />
+                                    <div className="flex items-center justify-center gap-2">
+                                        <button type="button" onClick={openCameraWithGuide} className="text-xs px-2 py-1 rounded bg-gray-900 text-white">Camera</button>
+                                        <button type="button" onClick={() => { if (galleryInputRef.current) { galleryInputRef.current.value = ''; galleryInputRef.current.click(); } }} className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700">Gallery</button>
+                                    </div>
                                     <div className="text-xs text-gray-400 text-center">
                                         Click image to replace.
                                     </div>
@@ -802,18 +894,31 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                         <div className="md:col-span-1">
                                             <label className="block text-xs font-bold text-purple-800 mb-1">Cover Image <span className="text-red-500">*</span></label>
-                                            <div className="aspect-[4/3] bg-white border-2 border-dashed border-purple-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-purple-50 transition-colors relative overflow-hidden" onClick={() => fileInputRef.current?.click()}>
+                                            <div className="aspect-[4/3] bg-white border-2 border-dashed border-purple-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-purple-50 transition-colors relative overflow-hidden" onClick={openCameraWithGuide}>
                                                 {croppedImage ? <img src={croppedImage} className="w-full h-full object-cover" /> : (
                                                     <>
                                                         <span className="text-2xl text-purple-300 mb-1">+</span>
                                                         <span className="text-xs text-purple-400 font-medium">Add Photo</span>
                                                     </>
                                                 )}
-                                                <input ref={fileInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} required />
+                                                <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleStandardFileChange} />
+                                                <input ref={galleryInputRef} type="file" className="hidden" accept="image/*" onChange={handleStandardFileChange} />
+                                                <input
+                                                    required
+                                                    tabIndex={-1}
+                                                    aria-hidden="true"
+                                                    className="absolute h-0 w-0 opacity-0 pointer-events-none"
+                                                    value={croppedImage ? 'selected' : ''}
+                                                    onChange={() => undefined}
+                                                />
+                                                <div className="absolute bottom-2 left-2 right-2 flex gap-2 justify-center">
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); openCameraWithGuide(); }} className="text-[10px] px-2 py-1 rounded bg-purple-700 text-white">Camera</button>
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); galleryInputRef.current?.click(); }} className="text-[10px] px-2 py-1 rounded bg-white border border-purple-200 text-purple-700">Gallery</button>
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                                        <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-xs font-bold text-purple-800 mb-1">Product Type <span className="text-red-500">*</span></label>
                                                 <select className="w-full border-purple-200 border p-2.5 rounded-lg text-sm focus:ring-purple-500" value={openedProduct.type} disabled={!!isLocked} onChange={e => setOpenedProduct({...openedProduct, type: e.target.value as any})} required>
@@ -835,11 +940,15 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                                 <label className="block text-xs font-bold text-purple-800 mb-1">Quantity <span className="text-red-500">*</span></label>
                                                 <input type="number" min="1" className="w-full border-purple-200 border p-2.5 rounded-lg text-sm focus:ring-purple-500" value={openedProduct.quantity} disabled={!!isLocked} onChange={e => setOpenedProduct({...openedProduct, quantity: Math.max(1, parseInt(e.target.value) || 1)})} required />
                                             </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-purple-800 mb-1">Break Duration (Hrs) <span className="text-red-500">*</span></label>
-                                                <div className="flex items-center gap-2">
-                                                    <input type="range" min="1" max="24" className="flex-1 accent-purple-600" value={formData.openDurationHours} onChange={e => setFormData({...formData, openDurationHours: parseInt(e.target.value)})} />
-                                                    <span className="text-xs font-bold text-purple-900 w-12 text-right">{formData.openDurationHours}h</span>
+                                            <div className="col-span-2 lg:col-span-1">
+                                                <label className="block text-xs font-bold text-purple-800 mb-1">Break Duration <span className="text-red-500">*</span></label>
+                                                <div className="rounded-lg border border-purple-200 bg-white px-3 py-2.5">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-[11px] text-purple-700 font-medium">How long entries stay open</span>
+                                                        <span className="text-sm font-extrabold text-purple-900">{formData.openDurationHours}h</span>
+                                                    </div>
+                                                    <input type="range" min="1" max="24" className="w-full accent-purple-600" value={formData.openDurationHours} onChange={e => setFormData({...formData, openDurationHours: parseInt(e.target.value)})} />
+                                                    <div className="mt-2 flex justify-between text-[10px] text-purple-500"><span>1h</span><span>12h</span><span>24h</span></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -880,9 +989,14 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                         ))}
                                         <div className="flex flex-col gap-3 mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200 border-dashed relative">
                                             <div className="flex flex-col sm:flex-row gap-3">
-                                                <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-white transition-colors shrink-0 bg-white overflow-hidden relative" onClick={() => prizeInputRef.current?.click()}>
+                                                <div className="w-16 h-16 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-white transition-colors shrink-0 bg-white overflow-hidden relative" onClick={() => prizeCameraInputRef.current?.click()}>
                                                     {newPrizeImage ? <img src={newPrizeImage} className="w-full h-full object-cover" /> : <span className="text-xs text-gray-400 text-center">+Img</span>}
-                                                    <input ref={prizeInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePrizeFile} />
+                                                    <input ref={prizeCameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePrizeFile} />
+                                                    <input ref={prizeGalleryInputRef} type="file" className="hidden" accept="image/*" onChange={handlePrizeFile} />
+                                                    <div className="absolute bottom-0 left-0 right-0 flex">
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); prizeCameraInputRef.current?.click(); }} className="text-[9px] w-1/2 bg-black/60 text-white">Cam</button>
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); prizeGalleryInputRef.current?.click(); }} className="text-[9px] w-1/2 bg-white/90 text-gray-700">Gal</button>
+                                                    </div>
                                                 </div>
                                                 <div className="flex-1 space-y-2">
                                                     <div className="flex gap-2">
@@ -939,7 +1053,12 @@ export const AddListingModal: React.FC<AddListingModalProps> = ({ isOpen, onClos
                                         <div className="flex flex-col justify-center gap-4">
                                             <div className="space-y-1">
                                                 <label className="block text-xs font-bold text-green-800 mb-1">Final Entry Price <span className="text-red-500">*</span></label>
-                                                <input type="number" className="w-full border-green-200 border p-2.5 rounded-lg text-sm font-bold text-green-900 focus:ring-green-500" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required min="0.01" step="0.01" />
+                                                <input type="number" className="w-full border-green-200 border p-2.5 rounded-lg text-sm font-bold text-green-900 focus:ring-green-500" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} required min="50" step="1" />
+                                                <p className="text-[10px] text-green-700 mt-1">Recommended floor: $50 per spot for better break value perception.</p>
+                                                <div className="mt-2 flex items-center justify-between bg-white/70 border border-green-200 rounded px-2 py-1">
+                                                    <span className="text-[10px] text-green-800">Suggested by valuation:</span>
+                                                    <button type="button" onClick={() => setFormData({...formData, price: Math.max(50, Math.round(valuation.suggestedEntryPrice || 0)).toString()})} className="text-[10px] font-bold text-green-700 hover:text-green-900">Use ${Math.max(50, Math.round(valuation.suggestedEntryPrice || 0))}</button>
+                                                </div>
                                             </div>
                                             
                                             <div className="bg-white/60 p-3 rounded-lg border border-green-100 text-xs space-y-1">

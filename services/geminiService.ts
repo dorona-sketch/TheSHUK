@@ -1,11 +1,21 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
+import { getEnv } from "../utils/env";
+
+export const isGeminiConfigured = (): boolean => {
+  return !!(getEnv('GEMINI_API_KEY') || getEnv('API_KEY'));
+};
+
+let didWarnMissingKey = false;
 
 const getClient = () => {
-  const apiKey = process.env.API_KEY;
+  const apiKey = getEnv('GEMINI_API_KEY') || getEnv('API_KEY');
   
   if (!apiKey) {
-    console.warn("API_KEY is missing. AI features will return mock data.");
+    if (!didWarnMissingKey) {
+      console.warn("Gemini API key missing (set VITE_GEMINI_API_KEY). AI features will return mock data.");
+      didWarnMissingKey = true;
+    }
     return null;
   }
   return new GoogleGenAI({ apiKey });

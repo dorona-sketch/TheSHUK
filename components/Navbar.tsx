@@ -82,7 +82,10 @@ export const Navbar = React.memo<NavbarProps>(({ currentUser, onNavigate, onSell
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                     {unreadNotifs > 0 && <span className="absolute top-1 right-1 inline-flex items-center justify-center w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-breakhit-dark"></span>}
                   </button>
-                  {showNotifications && <NotificationDropdown onClose={() => setShowNotifications(false)} onNavigate={(id) => onNavigate('DETAILS', id)} />}
+                  {showNotifications && (<>
+                    <div className="fixed inset-0 z-[60] bg-black/20 md:bg-transparent" onClick={() => setShowNotifications(false)} />
+                    <NotificationDropdown onClose={() => setShowNotifications(false)} onNavigate={(id) => onNavigate('DETAILS', id)} />
+                  </>)}
                 </div>
 
                 <button onClick={() => onNavigate('CHAT')} className="relative w-10 h-10 inline-flex items-center justify-center text-breakhit-muted hover:text-breakhit-primary hover:bg-breakhit-surfaceHigh rounded-full transition-colors" aria-label={`Messages ${totalUnreadCount > 0 ? `(${totalUnreadCount} unread)` : ''}`}>
