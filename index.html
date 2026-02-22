@@ -3,31 +3,96 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>The Digital Shuk</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cinzel:wght@700&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cinzel:wght@700&display=swap" media="print" onload="this.media='all'" />
-    <noscript>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cinzel:wght@700&display=swap" />
-    </noscript>
+    <title>Break-Hit</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/index.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cinzel:wght@700&display=swap" rel="stylesheet">
+    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="window.cvLoaded=true"></script>
     <script>
       // Polyfills for browser environment compatibility
       window.global = window;
       window.process = window.process || { env: {} };
-    </script>
-    <script type="importmap">
-      {
-        "imports": {
-          "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-          "react/": "https://esm.sh/react@^19.2.4/",
-          "react": "https://esm.sh/react@^19.2.4",
-          "@google/genai": "https://esm.sh/@google/genai@^1.39.0"
+      
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              display: ['Cinzel', 'serif'],
+            },
+            colors: {
+              // The Lugia Palette
+              breakhit: {
+                dark: '#0B1116',      // Deepest background (Charcoal/Black)
+                surface: '#151E26',   // Card surface (Stormy Dark Blue)
+                surfaceHigh: '#1E2933', // Lighter surface
+                border: '#2D3B48',    // Borders (Muted Blue-Grey)
+                primary: '#22d3ee',   // Cyan Lightning (Action)
+                primaryDim: '#0e7490',// Dimmed Lightning
+                silver: '#E2E8F0',    // Text/Highlights
+                muted: '#94A3B8',     // Secondary text
+                teeth: '#000000',     // The black border elements
+              },
+              // Mapping old primary to new theme for backward compat
+              primary: {
+                50: '#f0f9ff',
+                100: '#e0f2fe',
+                200: '#bae6fd',
+                300: '#7dd3fc',
+                400: '#38bdf8',
+                500: '#0ea5e9',
+                600: '#0284c7',
+                700: '#0369a1',
+                800: '#075985',
+                900: '#0c4a6e',
+              }
+            },
+            animation: {
+              'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+              'pulse-slow': 'pulseSlow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'bounce-short': 'bounceShort 1s infinite',
+              'shimmer': 'shimmer 2s linear infinite',
+            },
+            keyframes: {
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              bounceShort: {
+                '0%, 100%': { transform: 'translateY(-5%)', animationTimingFunction: 'cubic-bezier(0.8, 0, 1, 1)' },
+                '50%': { transform: 'translateY(0)', animationTimingFunction: 'cubic-bezier(0, 0, 0.2, 1)' },
+              },
+              pulseSlow: {
+                '0%, 100%': { opacity: '1' },
+                '50%': { opacity: '0.7' },
+              },
+              shimmer: {
+                '0%': { backgroundPosition: '-1000px 0' },
+                '100%': { backgroundPosition: '1000px 0' }
+              }
+            },
+            backgroundImage: {
+              'breakhit-gradient': 'linear-gradient(to bottom, #0B1116, #111a22)',
+              'silver-sheen': 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.05) 100%)',
+            }
+          }
         }
       }
     </script>
-  </head>
-  <body class="bg-shuk-dark text-shuk-silver">
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "@google/genai": "https://esm.sh/@google/genai@^1.39.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-breakhit-dark text-breakhit-silver">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

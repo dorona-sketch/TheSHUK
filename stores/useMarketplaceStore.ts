@@ -307,17 +307,14 @@ export const useMarketplaceStore = (
     };
 
     const getEndingSoonSales = (limit: number) => {
-        const timed = listings
+        return listings
           .filter(l => l.type !== ListingType.TIMED_BREAK && !l.isSold && !!l.endsAt)
-          .sort((a, b) => new Date(a.endsAt as Date | string).getTime() - new Date(b.endsAt as Date | string).getTime());
-
-        if (timed.length >= limit) return timed.slice(0, limit);
-
-        const fallback = listings
-          .filter(l => l.type !== ListingType.TIMED_BREAK && !l.isSold && !l.endsAt)
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-        return [...timed, ...fallback].slice(0, limit);
+          .sort((a, b) => {
+              const aTime = new Date(a.endsAt as Date | string).getTime();
+              const bTime = new Date(b.endsAt as Date | string).getTime();
+              return aTime - bTime;
+          })
+          .slice(0, limit);
     };
   
     const getRelatedListings = (listing: Listing) => {
