@@ -31,6 +31,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
     const [isSaving, setIsSaving] = useState(false);
     const [uploadingType, setUploadingType] = useState<'avatar' | 'cover' | null>(null);
     const [isLocating, setIsLocating] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
 
     const avatarInputRef = useRef<HTMLInputElement>(null);
     const coverInputRef = useRef<HTMLInputElement>(null);
@@ -67,7 +68,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
         setIsSaving(true);
         const updates: Partial<User> = {
             displayName,
-            name: displayName, // Sync legacy field
             bio,
             location,
             sellerAbout,
@@ -91,9 +91,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
             updates.coverImageUrl = coverPreview;
         }
 
-        await onSave(updates);
-        setIsSaving(false);
-        onClose();
+        try {
+            setSaveError(null);
+            await onSave(updates);
+            onClose();
+        } catch (error) {
+            console.error("Failed to save profile", error);
+            setSaveError("Could not save profile. Please try again.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleUseCurrentLocation = () => {
@@ -119,7 +126,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
         );
     };
 
-    const currentAvatar = avatarPreview || user.avatarUrl || user.avatar || `https://ui-avatars.com/api/?name=${user.name}`;
+    const fallbackAvatar = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="100%" height="100%" fill="%23e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="32" fill="%236b7280">${(displayName || user.name || "U").trim().slice(0,1).toUpperCase()}</text></svg>` )}`;
+    const currentAvatar = avatarPreview || user.avatarUrl || user.avatar || fallbackAvatar;
     const currentCover = coverPreview || user.coverImageUrl || user.coverImage;
 
     return (
@@ -281,7 +289,9 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-gray-100 flex gap-3 bg-gray-50">
+                <div className="p-4 border-t border-gray-100 bg-gray-50">
+                    {saveError && <p className="text-sm text-red-600 font-medium mb-2" aria-live="polite">{saveError}</p>}
+                    <div className="flex gap-3">
                     <button 
                         onClick={onClose}
                         className="flex-1 py-3 text-sm font-bold text-gray-600 bg-white border border-gray-300 rounded-xl hover:bg-gray-50"
@@ -295,6 +305,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                     >
                         {isSaving ? 'Saving...' : 'Save Profile'}
                     </button>
+                    </div>
                 </div>
             </div>
         </div>

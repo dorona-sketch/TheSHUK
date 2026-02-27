@@ -16,7 +16,7 @@ export default {
         display: ['Cinzel', 'serif'],
       },
       colors: {
-        shuk: {
+        breakhit: {
           dark: '#0B1116',
           surface: '#151E26',
           surfaceHigh: '#1E2933',
@@ -65,7 +65,7 @@ export default {
         },
       },
       backgroundImage: {
-        'shuk-gradient': 'linear-gradient(to bottom, #0B1116, #111a22)',
+        'breakhit-gradient': 'linear-gradient(to bottom, #0B1116, #111a22)',
         'silver-sheen': 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.05) 100%)',
       },
     },

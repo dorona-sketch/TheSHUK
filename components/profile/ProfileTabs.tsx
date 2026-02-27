@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Listing, WalletTransaction, BreakEntry, ListingType, TransactionType } from '../../types';
 import { formatSmartDate } from '../../utils/dateUtils';
 
@@ -14,11 +14,17 @@ export const ProfileTabs: React.FC<ProfileTabsProps> = ({ transactions, listings
     const [activeTab, setActiveTab] = useState<'ACTIVITY' | 'LISTINGS' | 'BREAKS'>('ACTIVITY');
 
     // Filter Logic
-    const myActivity = transactions.slice(0, 10); // Last 10
+    const myActivity = useMemo(() =>
+        [...transactions]
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 10),
+        [transactions]
+    ); // Last 10
     const myListings = listings.filter(l => l.sellerId === userId && l.type !== ListingType.TIMED_BREAK);
     
     // For breaks, we combine hosted breaks (from listings) and joined breaks
     const myHostedBreaks = listings.filter(l => l.sellerId === userId && l.type === ListingType.TIMED_BREAK);
+    const listingById = useMemo(() => new Map(listings.map((l) => [l.id, l])), [listings]);
     // Unique breaks joined
     const myJoinedBreaks = breaks.map(b => b.listingId).filter((v, i, a) => a.indexOf(v) === i);
 
@@ -105,19 +111,23 @@ export const ProfileTabs: React.FC<ProfileTabsProps> = ({ transactions, listings
                                             <div className="text-xs text-purple-600 font-bold mt-1 uppercase">Hosted by You</div>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                                 {/* Simplified view for joined breaks - In real app would fetch listing details */}
-                                {myJoinedBreaks.map((bid, idx) => (
-                                    <div key={idx} className="p-4 flex gap-4 hover:bg-gray-50 transition-colors">
+                                {myJoinedBreaks.map((listingId) => {
+                                    const joined = listingById.get(listingId);
+                                    return (
+                                    <div key={listingId} className="p-4 flex gap-4 hover:bg-gray-50 transition-colors">
                                         <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center text-lg border border-blue-200 shrink-0">
                                             🎟️
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="font-bold text-gray-900 text-sm truncate">Break Entry</div>
-                                            <div className="text-xs text-blue-600 font-bold mt-1 uppercase">Participant</div>
+                                            <div className="font-bold text-gray-900 text-sm truncate">{joined?.title ?? `Break #${listingId.slice(0, 6)}`}</div>
+                                            <div className="text-xs text-blue-600 font-bold mt-1 uppercase">Participant{joined?.breakStatus ? ` • ${joined.breakStatus}` : ""}</div>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </>
                         )}
                     </div>
