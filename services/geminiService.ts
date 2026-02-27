@@ -31,6 +31,24 @@ const cleanJson = (text: string | undefined): string => {
     }
 };
 
+
+
+const isObject = (value: unknown): value is Record<string, unknown> => {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+};
+
+const parseJsonObject = (raw: string | undefined): Record<string, unknown> | null => {
+  try {
+    const parsed = JSON.parse(cleanJson(raw));
+    return isObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const parseString = (value: unknown): string | null => {
+  return typeof value === 'string' ? value : null;
+};
 // --- Helper: Generate Description ---
 export const generateCardDescription = async (title: string, details: string): Promise<string> => {
   const client = getClient();
@@ -110,8 +128,17 @@ export const identifyCardFromImage = async (base64Image: string): Promise<{ card
         });
         console.timeEnd("Gemini:IdentifyCard");
         
-        const rawText = response.text;
-        return JSON.parse(cleanJson(rawText));
+        const parsed = parseJsonObject(response.text);
+        if (!parsed) return null;
+
+        const cardName = parseString(parsed.cardName);
+        const setName = parseString(parsed.setName);
+        if (!cardName || !setName) return null;
+
+        const number = parseString(parsed.number) ?? "";
+        const rarity = parseString(parsed.rarity) ?? "";
+
+        return { cardName, setName, number, rarity };
     } catch (e) {
         console.warn("Visual ID failed", e);
         return null;
@@ -178,10 +205,10 @@ export const performOcrOnCorners = async (
         });
         console.timeEnd("Gemini:OCR");
 
-        const rawText = response.text;
-        const result = JSON.parse(cleanJson(rawText));
-        
-        let cleanId = result.normalizedId;
+        const result = parseJsonObject(response.text);
+        if (!result) return { normalized: null, raw: '', confidence: 0 };
+
+        let cleanId = parseString(result.normalizedId);
         if (cleanId) {
             // Basic cleaning
             cleanId = cleanId.trim().toUpperCase().replace(/\s/g, '');
@@ -193,8 +220,8 @@ export const performOcrOnCorners = async (
 
         return {
             normalized: cleanId || null,
-            raw: result.normalizedId || '',
-            confidence: result.confidence || 0
+            raw: parseString(result.normalizedId) || '',
+            confidence: typeof result.confidence === 'number' && Number.isFinite(result.confidence) ? result.confidence : 0
         };
     } catch (e) {
         console.warn("OCR failed", e);

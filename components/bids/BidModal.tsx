@@ -68,7 +68,10 @@ export const BidModal: React.FC<BidModalProps> = ({
         setIsEnded(false);
         setShowSuccess(false);
         
-        if (parsedEndsAt && new Date() > parsedEndsAt) {
+        if (!parsedEndsAt) {
+            setIsEnded(true);
+            setError("Auction end time is unavailable.");
+        } else if (new Date() > parsedEndsAt) {
             setIsEnded(true);
             setError("Auction has ended.");
         }
@@ -109,16 +112,19 @@ export const BidModal: React.FC<BidModalProps> = ({
 
       // Check balance
       if (currentUser && amount > currentUser.walletBalance) {
-          setWarning(`Insufficient funds (Balance: $${currentUser.walletBalance.toLocaleString()})`);
-      } else {
-          setWarning(null);
+          setError(`Insufficient funds (Balance: $${currentUser.walletBalance.toLocaleString()})`);
+          setWarning(`Add funds to place this bid.`);
+          return;
       }
+
+      setWarning(null);
   }, [bidAmount, minBid, currentUser?.walletBalance, isOpen, showSuccess]);
 
   // Focus Trap & ESC Key Handler
   useEffect(() => {
+      if (!isOpen) return;
+
       const handleKeyDown = (e: KeyboardEvent) => {
-          if (!isOpen) return;
           
           if (e.key === 'Escape') {
               onClose();
@@ -158,7 +164,13 @@ export const BidModal: React.FC<BidModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       
-      if (parsedEndsAt && new Date() > parsedEndsAt) {
+      if (!parsedEndsAt) {
+          setError("Auction end time is unavailable.");
+          setIsEnded(true);
+          return;
+      }
+
+      if (new Date() > parsedEndsAt) {
           setError("Auction has ended.");
           setIsEnded(true);
           return;
@@ -167,6 +179,11 @@ export const BidModal: React.FC<BidModalProps> = ({
       const amount = parseFloat(bidAmount);
       if (isNaN(amount) || amount < minBid) {
           setError(`Invalid amount. Must be at least $${minBid}`);
+          return;
+      }
+
+      if (amount > currentUser.walletBalance) {
+          setError(`Insufficient funds (Balance: $${currentUser.walletBalance.toLocaleString()})`);
           return;
       }
 
@@ -296,7 +313,7 @@ export const BidModal: React.FC<BidModalProps> = ({
                             </div>
                             
                             {/* Error / Warning Messages */}
-                            <div className="min-h-[24px] mt-2 text-sm">
+                            <div className="min-h-[24px] mt-2 text-sm" aria-live="polite">
                                 {error ? (
                                     <p className="font-bold text-red-500 flex items-center gap-2 animate-pulse bg-red-500/10 p-2 rounded-lg border border-red-500/20">
                                         <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
@@ -329,7 +346,7 @@ export const BidModal: React.FC<BidModalProps> = ({
 
                         <button 
                             type="submit" 
-                            disabled={isSubmitting || isEnded || !!error || !bidAmount}
+                            disabled={isSubmitting || isEnded || !!error || !!warning || !bidAmount}
                             className="w-full py-4 bg-breakhit-primary hover:bg-cyan-300 disabled:bg-breakhit-border disabled:text-breakhit-muted text-breakhit-dark font-black rounded-xl shadow-[0_0_20px_rgba(34,211,238,0.3)] hover:shadow-[0_0_30px_rgba(34,211,238,0.5)] transition-all transform active:scale-[0.98] flex items-center justify-center gap-3 text-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-breakhit-dark focus:ring-breakhit-primary"
                         >
                             {isSubmitting ? (

@@ -185,6 +185,8 @@ export enum MessageType {
 
 // --- Interfaces ---
 
+export type ISODateString = string;
+
 export interface User {
   id: string;
   name: string; // Primary identifier/username
@@ -542,7 +544,7 @@ export interface Conversation {
   sellerId: string;
   participants: Record<string, { name: string; avatar?: string }>;
   lastMessage: string;
-  lastMessageAt: string;
+  lastMessageAt: ISODateString;
   unreadCounts: Record<string, number>;
   isBlocked: boolean;
 }
@@ -552,7 +554,7 @@ export interface Message {
   conversationId: string;
   senderId: string;
   content: string;
-  createdAt: string;
+  createdAt: ISODateString;
   status: MessageStatus;
   type: MessageType;
 }

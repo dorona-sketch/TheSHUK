@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getTimeRemaining, TimeRemaining, formatLocalTime } from '../utils/dateUtils';
 
 interface CountdownProps {
@@ -22,13 +22,17 @@ export const Countdown: React.FC<CountdownProps> = ({
     compact = true
 }) => {
     const [timeLeft, setTimeLeft] = useState<TimeRemaining>(getTimeRemaining(targetDate));
+    const hasCompletedRef = useRef(false);
 
     useEffect(() => {
+        hasCompletedRef.current = false;
+
         // Immediate check on mount/update
         const checkTimer = () => {
             const remaining = getTimeRemaining(targetDate);
             setTimeLeft(remaining);
-            if (remaining.isExpired && onComplete) {
+            if (remaining.isExpired && onComplete && !hasCompletedRef.current) {
+                hasCompletedRef.current = true;
                 onComplete();
             }
             return remaining;
@@ -76,9 +80,9 @@ export const Countdown: React.FC<CountdownProps> = ({
         }
     } else {
         // Less than an hour
-        timeString = compact 
-            ? `${timeLeft.minutes}m ${formatUnit(timeLeft.seconds)}s` 
-            : `${timeLeft.minutes} Minutes ${formatUnit(timeLeft.seconds)} Seconds`;
+        timeString = compact
+            ? (showSeconds ? `${timeLeft.minutes}m ${formatUnit(timeLeft.seconds)}s` : `${timeLeft.minutes}m`)
+            : (showSeconds ? `${timeLeft.minutes} Minutes ${formatUnit(timeLeft.seconds)} Seconds` : `${timeLeft.minutes} Minutes`);
     }
 
     return (
