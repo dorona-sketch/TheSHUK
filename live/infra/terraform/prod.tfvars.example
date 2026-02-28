@@ -1,0 +1,11 @@
+project_name       = "theshuk-live"
+aws_region         = "eu-west-1"
+hls_bucket_name    = "hls-stream-bucket-prod"
+acm_certificate_arn = "arn:aws:acm:eu-west-1:123456789012:certificate/xxxx"
+
+vpc_id = "vpc-xxxxxxxx"
+private_subnet_ids = [
+  "subnet-aaaa",
+  "subnet-bbbb",
+  "subnet-cccc"
+]

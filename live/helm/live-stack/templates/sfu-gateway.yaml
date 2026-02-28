@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sfu-gateway
+spec:
+  replicas: {{ .Values.sfuGateway.replicas }}
+  selector:
+    matchLabels:
+      app: sfu-gateway
+  template:
+    metadata:
+      labels:
+        app: sfu-gateway
+    spec:
+      containers:
+        - name: sfu-gateway
+          image: {{ .Values.sfuGateway.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.sfuGateway.service.port }}
+          env:
+            - name: EVENTBUS_URL
+              value: nats://eventbus:{{ .Values.eventbus.service.port }}
+            - name: TURN_URL
+              value: turn:{{ .Values.coturn.realm }}:{{ .Values.coturn.service.udpPort }}
+          envFrom:
+            - secretRef:
+                name: live-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sfu-gateway
+spec:
+  selector:
+    app: sfu-gateway
+  ports:
+    - name: http
+      port: {{ .Values.sfuGateway.service.port }}
+      targetPort: {{ .Values.sfuGateway.service.port }}

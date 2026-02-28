@@ -1,0 +1,58 @@
+global:
+  imagePullPolicy: IfNotPresent
+  domain: live.example.com
+  acmCertificateArn: ""
+
+signaling:
+  image: ghcr.io/example/signaling:latest
+  replicas: 2
+  service:
+    port: 8080
+
+eventbus:
+  image: nats:2.10-alpine
+  replicas: 1
+  service:
+    port: 4222
+
+sfuGateway:
+  image: ghcr.io/example/sfu-gateway:latest
+  replicas: 2
+  service:
+    port: 8081
+
+transcoder:
+  image: ghcr.io/example/transcoder:latest
+  replicas: 2
+  service:
+    port: 8090
+  hls:
+    bucket: hls-stream-bucket
+    prefix: live/
+
+coturn:
+  image: coturn/coturn:4.6.2
+  realm: live.example.com
+  username: turnuser
+  service:
+    type: LoadBalancer
+    udpPort: 3478
+    tcpPort: 3478
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+  tls:
+    enabled: false
+    secretName: live-tls
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
