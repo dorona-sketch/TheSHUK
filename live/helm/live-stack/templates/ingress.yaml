@@ -1,0 +1,37 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: live-ingress
+  annotations:
+{{ toYaml .Values.ingress.annotations | indent 4 }}
+{{- if .Values.global.acmCertificateArn }}
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.global.acmCertificateArn | quote }}
+{{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.global.domain }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: signaling
+                port:
+                  number: {{ .Values.signaling.service.port }}
+          - path: /sfu
+            pathType: Prefix
+            backend:
+              service:
+                name: sfu-gateway
+                port:
+                  number: {{ .Values.sfuGateway.service.port }}
+{{- end }}

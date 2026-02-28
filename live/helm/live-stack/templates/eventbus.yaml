@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eventbus
+spec:
+  replicas: {{ .Values.eventbus.replicas }}
+  selector:
+    matchLabels:
+      app: eventbus
+  template:
+    metadata:
+      labels:
+        app: eventbus
+    spec:
+      containers:
+        - name: nats
+          image: {{ .Values.eventbus.image }}
+          ports:
+            - containerPort: {{ .Values.eventbus.service.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eventbus
+spec:
+  selector:
+    app: eventbus
+  ports:
+    - name: nats
+      port: {{ .Values.eventbus.service.port }}
+      targetPort: {{ .Values.eventbus.service.port }}

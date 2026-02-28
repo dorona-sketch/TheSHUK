@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coturn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: coturn
+  template:
+    metadata:
+      labels:
+        app: coturn
+    spec:
+      containers:
+        - name: coturn
+          image: {{ .Values.coturn.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              exec turnserver \
+                -n \
+                --realm="{{ .Values.coturn.realm }}" \
+                --lt-cred-mech \
+                --user="{{ .Values.coturn.username }}:${TURN_SECRET}" \
+                --fingerprint \
+                --listening-port={{ .Values.coturn.service.udpPort }} \
+                --no-cli
+          env:
+            - name: TURN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: live-secrets
+                  key: TURN_SECRET
+          ports:
+            - name: turn-udp
+              containerPort: {{ .Values.coturn.service.udpPort }}
+              protocol: UDP
+            - name: turn-tcp
+              containerPort: {{ .Values.coturn.service.tcpPort }}
+              protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coturn
+spec:
+  type: {{ .Values.coturn.service.type }}
+  externalTrafficPolicy: Local
+  selector:
+    app: coturn
+  ports:
+    - name: turn-udp
+      port: {{ .Values.coturn.service.udpPort }}
+      protocol: UDP
+      targetPort: turn-udp
+    - name: turn-tcp
+      port: {{ .Values.coturn.service.tcpPort }}
+      protocol: TCP
+      targetPort: turn-tcp

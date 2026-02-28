@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transcoder
+spec:
+  replicas: {{ .Values.transcoder.replicas }}
+  selector:
+    matchLabels:
+      app: transcoder
+  template:
+    metadata:
+      labels:
+        app: transcoder
+    spec:
+      serviceAccountName: transcoder-sa
+      containers:
+        - name: transcoder
+          image: {{ .Values.transcoder.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.transcoder.service.port }}
+          env:
+            - name: HLS_BUCKET
+              value: {{ .Values.transcoder.hls.bucket | quote }}
+            - name: HLS_PREFIX
+              value: {{ .Values.transcoder.hls.prefix | quote }}
+          envFrom:
+            - secretRef:
+                name: live-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transcoder
+spec:
+  selector:
+    app: transcoder
+  ports:
+    - name: http
+      port: {{ .Values.transcoder.service.port }}
+      targetPort: {{ .Values.transcoder.service.port }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: transcoder-sa
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/theshuk-live-transcoder"

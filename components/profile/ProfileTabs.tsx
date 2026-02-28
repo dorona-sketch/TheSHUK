@@ -111,8 +111,7 @@ export const ProfileTabs: React.FC<ProfileTabsProps> = ({ transactions, listings
                                             <div className="text-xs text-purple-600 font-bold mt-1 uppercase">Hosted by You</div>
                                         </div>
                                     </div>
-                                    );
-                                })}
+                                ))}
                                 {/* Simplified view for joined breaks - In real app would fetch listing details */}
                                 {myJoinedBreaks.map((listingId) => {
                                     const joined = listingById.get(listingId);
