@@ -23,3 +23,8 @@
 - `npm run build` – production build
 - `npm run preview` – preview the built app
 - `npm run verify` – duplicate symbol check + build
+
+## Code organization
+
+- See `docs/CODEBASE_MAP.md` for a grouped map of files/folders by purpose and a prioritized cleanup backlog.
+
